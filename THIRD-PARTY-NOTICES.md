@@ -23,12 +23,12 @@ are in `build/licenses`.
 | [.NET Community Toolkit](https://github.com/CommunityToolkit/dotnet) | the window's logic | MIT | *package:* `CommunityToolkit.Mvvm` |
 | [Magick.NET](https://github.com/dlemstra/Magick.NET) | images | Apache 2.0 | *package:* `Magick.NET-Q16-AnyCPU` |
 | [ImageMagick](https://imagemagick.org) and the libraries built into it (libjpeg-turbo, libpng, libwebp, libtiff, libheif, libde265, libjxl, libraw, OpenJPEG, Little CMS, FreeType, zlib and others) | images | ImageMagick License; LGPL for libheif, libde265 and libraw; BSD, MIT, zlib and similar for the rest | *package:* `Magick.NET-Q16-AnyCPU` |
-| [PDFium](https://pdfium.googlesource.com/pdfium/), built by [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries), and the libraries built into it | PDF → images | BSD 3-Clause, Apache 2.0, MIT | `PDFium.txt` |
-| [QuestPDF](https://www.questpdf.com) | text → PDF | QuestPDF Community License | *package:* `QuestPDF` |
+| [PDFium](https://pdfium.googlesource.com/pdfium/), built by [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries), and the libraries built into it | PDF → images, slides and drawings | BSD 3-Clause, Apache 2.0, MIT | `PDFium.txt` |
+| [QuestPDF](https://www.questpdf.com) | documents, sheets and slides → PDF | QuestPDF Community License | *package:* `QuestPDF` |
 | [qpdf](https://github.com/qpdf/qpdf) | part of QuestPDF | Apache 2.0 | `qpdf.md`, `Apache-2.0.txt` |
-| [Lato](https://www.latofonts.com) | part of QuestPDF: the font of PDFs made from text | SIL Open Font License 1.1 | `OFL-1.1-Lato.txt` |
-| [PdfPig](https://github.com/UglyToad/PdfPig) | reading text from PDFs | Apache 2.0 | `Apache-2.0.txt` |
-| [Open XML SDK](https://github.com/dotnet/Open-XML-SDK) | Word documents | MIT | below |
+| [Lato](https://www.latofonts.com) | part of QuestPDF: the font of PDFs made from documents | SIL Open Font License 1.1 | `OFL-1.1-Lato.txt` |
+| [PdfPig](https://github.com/UglyToad/PdfPig) | reading text and tables from PDFs | Apache 2.0 | `Apache-2.0.txt` |
+| [Open XML SDK](https://github.com/dotnet/Open-XML-SDK) | Word, Excel and PowerPoint files | MIT | below |
 | [Markdig](https://github.com/xoofx/markdig) | reading Markdown | BSD 2-Clause | `BSD-2-Clause-Markdig.txt` |
 | [Html Agility Pack](https://html-agility-pack.net) | reading HTML and e-books | MIT | below |
 | [RtfPipe](https://github.com/erdomke/RtfPipe) | reading RTF | MIT | below |
@@ -49,7 +49,7 @@ uses them when they are installed, and offers to fetch the first two from their 
 |---|---|---|---|
 | [FFmpeg](https://ffmpeg.org) | audio and video | GPL 3 (the builds named here) | [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) on Windows, [BtbN](https://github.com/BtbN/FFmpeg-Builds) on Linux |
 | [7-Zip](https://www.7-zip.org) | .7z, password-protected zip | LGPL 2.1, with the unRAR restriction for its RAR code | [7-zip.org](https://www.7-zip.org) / [its GitHub releases](https://github.com/ip7z/7zip/releases) |
-| LibreOffice, Microsoft Word, WinRAR / RAR | documents, creating .rar | their own | never fetched; used only if installed |
+| LibreOffice, Microsoft Office (Word, Excel, PowerPoint), WinRAR / RAR | documents, spreadsheets and presentations with their page layout; creating .rar | their own | never fetched; used only if installed |
 
 ## Copyright notices of the MIT-licensed libraries
 

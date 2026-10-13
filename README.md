@@ -9,8 +9,8 @@
 
 <p align="center">Windows 10 / 11 and Linux · free · works offline</p>
 
-A fast desktop app that converts images, audio, video, documents and archives. Drop files in,
-pick a format, press Convert.
+A fast desktop app that converts images, audio, video, documents, spreadsheets, presentations
+and archives. Drop files in, pick a format, press Convert.
 
 ![The main window with a batch of files](docs/screenshots/main-window.png)
 
@@ -40,10 +40,13 @@ settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
 
 | | From | To |
 |---|---|---|
-| Images | jpg, png, gif, webp, bmp, tiff, heic, ico | jpg, png, gif, webp, bmp, tiff, pdf |
+| Images | jpg, png, gif, webp, bmp, tiff, heic, ico, svg | jpg, png, gif, webp, bmp, tiff, pdf |
 | Audio | mp3, wav, flac, aac, ogg, m4a, wma, opus | mp3, wav, flac, aac, m4a, ogg, opus |
 | Video | mp4, mkv, avi, webm, mov, wmv, flv, ts, m4v | mp4, mkv, avi, webm, mov, gif, audio only, picture frames |
-| Documents | txt, pdf, doc, docx, md, log | txt, pdf, doc, docx, pdf pages as pictures |
+| Documents | docx, doc, odt, rtf, html, md, epub, txt | pdf, docx, odt, rtf, html, md, epub, txt, pages as pictures |
+| Spreadsheets | xlsx, xls, ods, csv | pdf, xlsx, ods, csv, html |
+| Presentations | pptx, ppt, odp | pdf, pptx, odp, slides as pictures |
+| PDF | pdf | docx, xlsx, pptx, odt, ods, odp, rtf, html, md, epub, txt, csv, png, jpg, tiff, svg |
 | Archives | zip, 7z, rar, tar, gz, bz2 | zip, 7z, tar (rar when WinRAR or `rar` is installed) |
 
 ## What it does well
@@ -53,6 +56,9 @@ settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
   pixel-exact or lossless.
 - **Whole batches at once.** Many pictures become one PDF, GIF or multi-page TIFF; many files
   one archive; a PDF or a video becomes its pages or frames.
+- **Documents without an office program.** The app's own converter keeps headings, lists,
+  tables and pictures between Word, OpenDocument, HTML, Markdown, e-books and PDF. Where Word,
+  Excel and PowerPoint or LibreOffice are installed, they lay the pages out exactly instead.
 - **Fast.** Every processor core is used, and the graphics card for video where that is
   actually quicker.
 - **Simple, precise when wanted.** One slider trades size for quality. The *Detailed settings*
@@ -86,8 +92,9 @@ It is built with these libraries, whose licences ship in every download (the app
 
 | Library | Licence |
 |---|---|
-| .NET, Avalonia, SkiaSharp, HarfBuzzSharp, .NET Community Toolkit, Open XML SDK, SharpCompress | MIT |
+| .NET, Avalonia, SkiaSharp, HarfBuzzSharp, .NET Community Toolkit, Open XML SDK, SharpCompress, Html Agility Pack, RtfPipe, ExcelDataReader, ExcelNumberFormat | MIT |
 | Skia, ANGLE, PDFium | BSD 3-Clause |
+| Markdig | BSD 2-Clause |
 | Magick.NET, PdfPig, qpdf | Apache 2.0 |
 | ImageMagick and the image libraries built into it | ImageMagick License; LGPL for libheif, libde265 and libraw |
 | QuestPDF | QuestPDF Community License |

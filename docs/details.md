@@ -12,9 +12,9 @@ Each contains only its own system's parts and its own copy of .NET — nothing t
 
 | System | File | Size | Start it |
 |---|---|---|---|
-| Windows 10 / 11 (64-bit), installer | `MasterFileConverter-<version>-win-x64-setup.exe` | 50 MB | run it |
-| Windows 10 / 11 (64-bit), folder | `MasterFileConverter-<version>-win-x64.zip` | 67 MB (160 MB unpacked) | unzip, run `MasterFileConverter.exe` |
-| Linux (64-bit, glibc) | `MasterFileConverter-<version>-linux-x64.tar.gz` | 74 MB (180 MB unpacked) | unpack, run `./install.sh` or `./masterfileconverter` |
+| Windows 10 / 11 (64-bit), installer | `MasterFileConverter-<version>-win-x64-setup.exe` | 55 MB | run it |
+| Windows 10 / 11 (64-bit), folder | `MasterFileConverter-<version>-win-x64.zip` | 74 MB (176 MB unpacked) | unzip, run `MasterFileConverter.exe` |
+| Linux (64-bit, glibc) | `MasterFileConverter-<version>-linux-x64.tar.gz` | 81 MB (198 MB unpacked) | unpack, run `./install.sh` or `./masterfileconverter` |
 
 The Windows downloads have no Linux code or libraries in them and the Linux download no Windows
 ones: the windowing backend (Win32 / X11), the platform code and every native library are
@@ -68,14 +68,75 @@ and `7zz`/`7z` are used when they are there.
 
 | Category  | Inputs                                              | Outputs                                   |
 |-----------|-----------------------------------------------------|-------------------------------------------|
-| Images    | jpg/jpeg, png, gif, webp, bmp, tif/tiff, heic, ico  | jpg, png, gif, webp, bmp, tiff, pdf        |
+| Images    | jpg/jpeg, png, gif, webp, bmp, tif/tiff, heic, ico, svg | jpg, png, gif, webp, bmp, tiff, pdf    |
 | Audio     | mp3, wav, flac, aac, ogg, m4a, wma, opus            | mp3, wav, flac, aac, m4a, ogg, opus        |
 | Video     | mp4, mkv, avi, webm, mov, wmv, flv, ts, m4v         | mp4, mkv, avi, webm, mov + audio extract + gif + png/jpg frames |
-| Documents | txt, pdf, doc, docx, md, log                        | txt, pdf, doc, docx (+ pdf → png/jpg pages) |
+| Text documents | docx, doc, odt, rtf, html/htm, md, epub, txt, log | pdf, docx, odt, rtf, html, md, epub, txt, doc + png/jpg pages |
+| Spreadsheets | xlsx, xls, ods, csv                              | pdf, xlsx, ods, csv, html + png/jpg pages  |
+| Presentations | pptx, ppt, odp                                  | pdf, pptx, odp + png/jpg slides            |
+| PDF       | pdf                                                 | docx, doc, odt, rtf, html, md, epub, txt · xlsx, ods, csv · pptx, odp · png, jpg, tiff, svg |
+| Drawings (through LibreOffice) | odg, pub                       | pdf + png/jpg pages                        |
 | Archives  | zip, 7z, rar, tar, gz/tgz, bz2                      | zip, 7z, tar (+ rar when the RAR encoder is installed) |
 
 Animated GIFs stay animated (gif ↔ webp, gif ↔ mp4/mkv/webm), and any file can be
-packed into a zip/7z.
+packed into a zip/7z. The old binary Office formats — .doc, .xls, .ppt — are read; of the three
+only .doc is also written.
+
+## Documents: who converts what
+
+There are two ways from one document format to another, and the app takes the better one for
+each conversion by itself.
+
+**An office program keeps the page.** Microsoft Word, Excel and PowerPoint (Windows) and
+LibreOffice (both systems) lay a document out exactly as it is — fonts, columns, headers,
+charts, a slide's design — so whenever both ends are formats such a program reads and writes,
+it is asked first: Word and OpenDocument text and RTF among each other and into PDF;
+workbooks among each other and into PDF as they would print; presentations among each other
+and into PDF. The old .doc and .ppt, OpenDocument drawings (.odg) and Publisher files (.pub)
+can only be read this way.
+
+**The built-in converter keeps the content, and needs nothing installed.** It reads a document
+into what it says and how it is built — headings, paragraphs with bold, italic, underline and
+links, lists inside lists, tables, pictures, footnotes, page breaks — and writes that in the
+target format: a Word file with real heading styles and real lists, a web page that carries its
+pictures inside it, an e-book with a chapter per top-level heading and a table of contents,
+Markdown as GitHub reads it (a document with pictures becomes a folder: the text, and an
+`images` folder it refers to). It is the only way for Markdown, HTML and e-books, and stands in
+for everything else wherever no office program is there:
+
+- **A spreadsheet** becomes a PDF as a grid of its cells — numbers to the right, columns as
+  wide as their content, a wide sheet turned to landscape and one too wide even for that
+  continued with its remaining columns on further pages. Between Excel, ODS and CSV, a number
+  stays a number and a date a date, each with its format; merged cells stay merged. CSV is read
+  whatever it is separated by (comma, semicolon, tab) and whatever its encoding; a code with
+  leading zeros stays the text it is.
+- **A presentation** becomes a PDF with a page per slide, of the slide's size, every text box,
+  picture and table where it stands; text too long for its box is made smaller, not cut off.
+  What a slide inherits from its layout and master — where its title stands, the size of its
+  type, its bullets — is looked up there. The theme's colours and backgrounds are an office
+  program's to draw.
+- **HTML** is read as a document, not rendered as a browser would: its headings, text, lists,
+  tables and pictures, not the layout its style sheets arrange. Pictures come from the file
+  itself or from its own folder; nothing is ever fetched from the internet.
+
+**Out of a PDF**, which has no paragraphs or tables, only letters at positions:
+
+- **into Word and the other text formats:** letters are grouped into words, lines and blocks; a
+  short block in clearly larger type is a heading, bold and italic come from the fonts,
+  pictures are put where they stood, page numbers and the lines repeated at the top and bottom
+  of every page are left out, a paragraph that ran over a page end is joined again. (Word, where
+  installed, is asked first for PDF → Word: it reflows the page layout too.) A scanned page is a
+  picture of text, and comes out as that picture.
+- **into Excel, ODS, CSV:** rows and columns are found again from where the words stand — a
+  wide gap in a line divides two cells, and the table's complete rows say which cell is which
+  column, wherever in its column it stands. Everything that is not a table goes into the first
+  column, a line per row. Numbers become numbers when the document shows how it writes them
+  (1,234.50 or 1.234,50); a number that could be read both ways stays text.
+- **into PowerPoint or ODP:** every page becomes a slide of the page's size that shows it
+  exactly — drawn by PDFium at 200 dpi and stored without loss. Its text is part of the
+  picture. (LibreOffice's import, which gives text that can be edited and a look that is close
+  rather than exact, can be chosen under Detailed settings.)
+- **into SVG:** a page as a drawing — see below.
 
 ## Quality: what 100 % means
 
@@ -103,7 +164,20 @@ At the 100 % slider position nothing is thrown away that the target format can k
   largest image rather than its 16-pixel thumbnail.
 - **Images → PDF** take a JPEG or PNG as the very data it already is — nothing is decoded or
   compressed again, so nothing can be lost and it takes no time. **PDF → images** renders at
-  300 dpi.
+  300 dpi; **PDF → TIFF** puts every page into one file, compressed without loss, a page
+  without colour stored as grey.
+- **SVG → pictures** draws the drawing at 300 dpi (or the resolution set) — at that size, not
+  drawn small and enlarged — and leaves transparent what it leaves empty. **SVG → PDF** keeps
+  it a drawing: lines and letters in the PDF, sharp at any size.
+- **PDF → SVG** writes a page as what it is made of: a shape as a path with its fill, outline,
+  dashes and clip; a letter as its outline, taken from the font inside the PDF, so the text
+  looks as it does in the PDF on any computer (it is a drawing of the text: it cannot be
+  selected); a picture at its own resolution — a photo as the very JPEG that lies in the PDF.
+  What cannot be said that way — a gradient, an object blended with what is under it — is drawn
+  by PDFium by itself and placed as a small picture in the same spot and layer; filled-in form
+  fields go on top the same way.
+- **A document's pictures** travel as they are: a JPEG or PNG inside a Word file, an e-book or a
+  web page goes into the result as the same data, never compressed a second time.
 - **Text files** are read in their real encoding (UTF-8, UTF-16, or the legacy code page that
   goes with the system's language, such as Windows-1254), so accented letters survive.
 
@@ -135,9 +209,15 @@ above.
 | Audio | bitrate · variable-bitrate quality · sample rate · channels · bit depth (WAV, FLAC) · FLAC effort · target size in MB · tags and cover art |
 | GIF from video / pictures | frame rate · width · colours · shading · repeat · seconds per picture |
 | Frames from video | frames per second · maximum number of frames · JPEG quality · maximum size |
-| PDF → images | resolution (dpi) · pages (`1-3, 7, 10-`) · plus the picture settings |
-| Pictures / text → PDF | paper size · margins · text size |
-| Documents | which engine converts: LibreOffice, Microsoft Word, or the built-in one |
+| PDF or any document → images | resolution (dpi) · pages (`1-3, 7, 10-`) · plus the picture settings |
+| SVG → pictures | resolution (dpi) · maximum width / height · plus the picture settings |
+| Pictures → PDF | paper size · margins |
+| Text, Markdown, HTML, e-book, CSV → PDF | paper size · margins · text size |
+| Documents, spreadsheets, presentations | which engine converts: LibreOffice, Microsoft Office, or the built-in one |
+| PDF → Excel / ODS / CSV | a sheet for every page, or all pages on one |
+| … → CSV | separator: comma, semicolon or tab |
+| PDF → PowerPoint / ODP | exact (pages as pictures) or LibreOffice's editable import · resolution (dpi) · pages |
+| PDF → TIFF / SVG | pages (· resolution and compression for TIFF) |
 | Archives | compression level 0–9 · password (AES-256; kept for the session, never saved) · solid 7z |
 
 ## Speed
@@ -213,7 +293,14 @@ The converter understands what a batch *means*, not just each file alone:
 - **Video → frame sequence.** png/jpg on a video extracts frames: short clips keep
   every frame (up to 30 fps), long videos are sampled so the result stays near ~300 images.
 - **PDF → images.** One png/jpg per page (rendered by PDFium); multi-page PDFs get a
-  "name pages" folder.
+  "name pages" folder. So does **any other document**: a Word file's pages, a workbook's, a
+  presentation's slides.
+- **A TIFF of several pages** (a scan, a fax) keeps them all: each becomes a page of the PDF, a
+  picture in a "name pages" folder, a page of a combined TIFF.
+- **A workbook → CSV.** A CSV file is one table, so a workbook of several sheets becomes a
+  "name sheets" folder with a file for each.
+- **A document with pictures → Markdown.** A "name markdown" folder: the text, and the pictures
+  it refers to in an `images` folder beside it.
 - **Compressed tars are unpacked all the way.** `name.tar.gz`, `.tgz` and `.tar.bz2` are
   repacked as their files, not as one inner tar.
 
@@ -293,12 +380,12 @@ The app orchestrates the fastest proven native engines; the status bar shows wha
 |--------|----------|---------|-------|
 | FFmpeg | audio, video, gif ↔ video | one-click download in the app (gyan.dev build, ~100 MB) | the installed `ffmpeg` if it is version 9 or newer and has every encoder the app uses, else a one-click download (BtbN build, ~145 MB) |
 | ImageMagick (Magick.NET Q16) | images | in the download | in the download |
-| PDFium | PDF → images | in the download | in the download |
+| PDFium | PDF → images, slides, SVG | in the download | in the download |
 | 7-Zip | creating and unpacking .7z, password-protected zip | the installed 7-Zip, else a one-click download (7zr + 7za) | the installed `7zz` / `7z`, else a one-click download (7zz) |
 | SharpCompress, .NET | reading zip/rar/tar/gz/bz2, writing zip/tar | in the download | in the download |
-| LibreOffice | high-fidelity doc/docx/pdf | detected if installed (optional) | detected if installed (optional) |
-| Microsoft Word | high-fidelity doc/docx/pdf, PDF → Word | detected if installed (optional) | — |
-| QuestPDF + PdfPig + OpenXml | built-in document conversion | in the download | in the download |
+| LibreOffice | documents, spreadsheets, presentations with their page layout; .odg and .pub | detected if installed (optional) | detected if installed (optional) |
+| Microsoft Office: Word, Excel, PowerPoint | the same for its own formats, OpenDocument and RTF; PDF → Word | detected if installed (optional), each program by itself | — |
+| QuestPDF, PdfPig, Open XML SDK, Markdig, Html Agility Pack, RtfPipe, ExcelDataReader | built-in document, spreadsheet and presentation conversion | in the download | in the download |
 | RAR encoder | creating .rar (proprietary format) | WinRAR, if installed (optional) | `rar`, if installed (optional) |
 
 An installed FFmpeg older than version 9 is passed over — the app is tested against the build it
@@ -310,9 +397,17 @@ publisher states. A file that does not match — cut short, or changed on the wa
 and not used. (Only when GitHub cannot be asked is 7-Zip fetched from 7-zip.org, which states no
 checksum.)
 
-Without Word/LibreOffice, document conversions still work at text fidelity
-(legacy binary `.doc` *input* is the one thing that needs a real Office engine).
-With Word, one hidden instance is shared by the whole batch instead of being started per file.
+Without an office program every conversion still works through the built-in converter (see
+[Documents: who converts what](#documents-who-converts-what)) — except for the four kinds of
+file only an office program reads: the old binary `.doc` and `.ppt`, OpenDocument drawings and
+Publisher files. (The old `.xls` is read built-in.)
+
+With Microsoft Office, one hidden instance of each program is shared by the whole batch instead
+of being started per file, and closed a few seconds after its last job. Macros in the files are
+never run. A program that is told to quit and lingers is ended, and the app waits for that
+before it exits itself, so no hidden office program is left behind. PowerPoint runs once per
+user: when you have it open, the conversion goes through that very program without a window,
+and it stays open afterwards.
 
 ## Command line
 
@@ -332,7 +427,8 @@ masterfileconverter <input> [<input2> …] <target-ext> [options]
 
 masterfileconverter --list-settings <source-ext> <target-ext>   the settings --set accepts
 masterfileconverter --setup-tools                               download FFmpeg and 7-Zip
-masterfileconverter --self-test [--filter <text>] [--keep]      check every conversion on this machine
+masterfileconverter --self-test [--filter <text>] [--keep] [--engine <name>]
+                                                                check every conversion on this machine
 masterfileconverter --update [--from <file>]                    look for a newer version and install it
 masterfileconverter --uninstall [--keep-settings]               remove the installed app (Linux)
 ```
@@ -345,7 +441,9 @@ Exit codes: `0` success, `1` conversion error, `2` bad arguments.
 **`--self-test`** makes a small sample of every input format, converts it to every target the
 app offers and inspects each result (an image must decode, a video must keep its tracks and
 length, a PDF its text, an archive exactly its files). Conversions that need something the
-machine lacks are listed as skipped, with the reason.
+machine lacks are listed as skipped, with the reason. `--engine builtin`, `libreoffice` or
+`office` has the document conversions done by that engine alone — otherwise the best one
+installed does them, and the others go unchecked.
 
 ## Building
 
@@ -361,7 +459,7 @@ build\publish.ps1                                    # the downloads and the ins
 | Project | What it is |
 |---|---|
 | `FileConverter.Core` | the conversion engines, settings and command line — no UI, nothing system-specific |
-| `FileConverter.Platform.Windows` | Word automation, registry, Explorer's sort order, Windows engine downloads |
+| `FileConverter.Platform.Windows` | Word, Excel and PowerPoint automation, registry, Explorer's sort order, Windows engine downloads |
 | `FileConverter.Platform.Linux` | XDG folders, `/sys` and `/proc` probing, the desktop's file manager, Linux engine downloads |
 | `FileConverter` | the Avalonia window (and `--cli`); references exactly one platform project |
 | `FileConverter.Tests` | every conversion, every detailed setting, and the real window rendered off-screen |
@@ -414,6 +512,47 @@ says which file is for which system, what is new (that version's part of `CHANGE
 files' SHA-256 checksums.
 
 ## What has been checked
+
+Version 2.5.0 added documents, spreadsheets, presentations and drawings: some forty formats on
+one side or the other, each into the others. (It made the downloads 5 to 7 MB larger.)
+
+**Every conversion the app offers** is run by `--self-test` on a sample it makes of every
+format, and each result is inspected: a document must still say what the sample said, a
+workbook still hold its number as a number, a presentation its slides, a PDF its pages. On
+Windows 11, by the Windows download itself:
+
+| Documents converted by | Passed | Failed | Skipped |
+|---|---|---|---|
+| the best engine installed — Microsoft Office 2024 (Word, Excel, PowerPoint) | 505 | 0 | 8: drawings and Publisher files, which need LibreOffice |
+| the built-in converter alone (`--engine builtin`) | 490 | 0 | 23: those, and the old `.doc` and `.ppt`, which need an office program |
+| LibreOffice 26.2 alone (`--engine libreoffice`) | 508 | 0 | 5: Publisher files — only Publisher writes one, so there is no sample |
+
+**That the files the app writes are files other programs read** was checked with the programs
+themselves: Word opened the Word, OpenDocument and RTF files the built-in converter writes,
+Excel its workbooks, PowerPoint its presentations, and LibreOffice all of them — each converted
+them on to a PDF, and the pages were looked at: headings, lists inside lists, tables, pictures,
+numbers and dates, bulleted levels on a slide, all in place. A real Publisher file became a PDF
+through LibreOffice.
+
+**PDF → SVG** is checked by drawing every SVG again and comparing it, pixel against pixel, with
+the page as PDFium draws it: PDFs written by the app, by QuestPDF, by Word and by LibreOffice,
+pages that are turned by a quarter, a half and three quarters, a page that shows only a part of
+itself, a page with a gradient. A photo passed through a PDF into an SVG comes out as the same
+bytes that went in.
+
+**The test suite** has 397 tests (it had 247), 150 of them for what is new: what each reader
+recovers and each writer produces, tables found in a PDF, the way a document writes its numbers,
+slides that inherit from their layout, and that no hidden office program is left running.
+
+**On GitHub's machines** (Windows Server and Ubuntu) every push ran the test suite and the
+downloads' own `--self-test` — there with the built-in converter throughout, since a build
+machine has no office program. That is where the Linux side has run.
+
+Not checked: LibreOffice and an office program on Linux with these new formats (the same code
+that passed with LibreOffice on Windows, and before that with LibreOffice 7.4 on Debian for
+Word files); Microsoft Office older than 2024; password-protected office files beyond that
+they fail instead of asking; and very large files — a workbook of a million rows, a PDF of a
+thousand pages — which are written as they come rather than held in memory, but were not timed.
 
 Version 2.4.0 made updating one click, uninstalling complete, and closing the window final.
 

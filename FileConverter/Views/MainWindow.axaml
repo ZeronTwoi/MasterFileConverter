@@ -451,7 +451,7 @@
                 <Ellipse Classes="dot" Classes.on="{Binding SevenZipAvailable}" />
                 <TextBlock Text="7-Zip (.7z)" ToolTip.Tip="Needed to create .7z archives, and the fastest way to unpack them." />
                 <Ellipse Classes="dot" Classes.on="{Binding OfficeEngineAvailable}" />
-                <TextBlock Text="Office engine (doc fidelity)" ToolTip.Tip="{Binding OfficeEngineTip}" />
+                <TextBlock Text="Office engine (page layout)" ToolTip.Tip="{Binding OfficeEngineTip}" />
                 <Ellipse Classes="dot" Classes.on="{Binding RarAvailable}" />
                 <TextBlock Text="RAR encoder (.rar output)"
                            ToolTip.Tip="RAR is proprietary: only RARLAB's own encoder (part of WinRAR, or the rar command on Linux) may create .rar files. Reading and converting FROM .rar always works." />

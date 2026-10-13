@@ -174,8 +174,9 @@ public partial class MainViewModel : ObservableObject
 
     public string OfficeEngineTip =>
         "LibreOffice" + (PlatformServices.Current.OfficeAutomation is { } office ? $" or {office.Name}" : "") +
-        " gives the best .doc/.docx/.pdf fidelity. Without one, document conversions fall back to text-level " +
-        "conversion and legacy .doc input is unavailable.";
+        " lays out Word, Excel and PowerPoint files (and their OpenDocument counterparts) exactly as they are. " +
+        "Without one, the built-in converter keeps their headings, lists, tables and pictures; the old .doc and .ppt " +
+        "formats, drawings (.odg) and Publisher files need an office program.";
 
     /// <param name="store">Where settings are kept; the user's settings file by default.</param>
     /// <param name="findEngines">Look for FFmpeg and the other engines, and measure the GPU, in the background.</param>
