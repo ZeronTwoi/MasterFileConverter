@@ -5,6 +5,7 @@
 //   FileConverter/Assets/app.ico     the Windows programs and the window (16 … 256 px)
 //   build/linux/icons/<size>.png     the Linux applications menu, plus scalable.svg
 //   docs/logo.svg                    the README
+//   build/windows/wizard/*.png       the Windows installer's pages
 //
 // One drawing, described once in Design() below. The small sizes are not the large picture
 // shrunk: they get a heavier line and no margin, and every line lies on whole pixels, so that
@@ -43,6 +44,23 @@ foreach (int side in new[] { 16, 22, 24, 32, 48, 64, 128, 256, 512 })
 var drawing = Encoding.UTF8.GetBytes(Svg(Design(256), name));
 Save(Path.Combine(root, "build", "linux", "icons", "scalable.svg"), drawing);
 Save(Path.Combine(root, "docs", "logo.svg"), drawing);
+
+// The Windows installer: the logo for the corner of its pages, and on a tall sheet for the side of
+// its first and last page — each in the sizes of 100, 150 and 200 % screen scaling. On nothing, so
+// that they sit on the installer's light background and on its dark one alike.
+foreach (int side in new[] { 55, 83, 110, 138 })
+{
+    using var picture = Render(side);
+    Save(Path.Combine(root, "build", "windows", "wizard", $"corner-{side}.png"), Png(picture));
+}
+foreach (var (width, height) in new[] { (164, 314), (246, 459), (328, 604) })
+{
+    using var sheet = new MagickImage(MagickColors.Transparent, (uint)width, (uint)height);
+    int side = (int)Math.Round(width * 0.6);
+    using var picture = Render(side);
+    sheet.Composite(picture, (width - side) / 2, (int)Math.Round(height * 0.22), CompositeOperator.Over);
+    Save(Path.Combine(root, "build", "windows", "wizard", $"side-{width}.png"), Png(sheet));
+}
 
 var header = Design(32);
 Console.WriteLine($"For Palette.axaml (drawn {header.Side} wide, line {N(header.Stroke)}):");

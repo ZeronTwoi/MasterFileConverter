@@ -1,6 +1,9 @@
-; The Windows installer (Inno Setup 6 or newer). It installs for the current user only - no
+; The Windows installer (Inno Setup 6.7 or newer). It installs for the current user only - no
 ; administrator rights - and gives the app what a folder of files cannot: a Start menu entry,
 ; an entry under "Installed apps" with an uninstaller, and a place in "Open with" and "Send to".
+; Its pages: welcome, the licence, where to install, what to add (desktop shortcut, "Send to",
+; "Open with"), a summary, and at the end the offer to start the app. They carry the app's logo
+; and follow Windows' light or dark mode.
 ;
 ; build\windows\installer.ps1 runs it, with the names from Directory.Build.props.
 
@@ -12,6 +15,9 @@
 #define Types "jpg|jpeg|png|gif|webp|bmp|tif|tiff|heic|ico|mp3|wav|flac|aac|ogg|m4a|wma|opus|mp4|mkv|avi|webm|mov|wmv|flv|ts|m4v|txt|pdf|doc|docx|md|log|zip|7z|rar|tar|gz|tgz|bz2"
 
 #define Program ProgramName + ".exe"
+; the logo in the installer's sizes (build/MakeIcon.cs draws them), and the app's licence
+#define Wizard AddBackslash(SourcePath) + "wizard\"
+#define Licence AddBackslash(SourcePath) + "..\..\LICENSE"
 #define OpenWith "Software\Classes\Applications\" + Program
 
 [Setup]
@@ -25,6 +31,7 @@ AppCopyright={#Copyright}
 AppPublisherURL={#Website}
 AppSupportURL={#Website}/issues
 AppUpdatesURL={#Website}/releases/latest
+AppComments={#Summary}
 VersionInfoVersion={#Version}
 VersionInfoDescription={#DisplayName} Setup
 VersionInfoProductName={#DisplayName}
@@ -35,13 +42,20 @@ DefaultDirName={autopf}\{#DisplayName}
 DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0
 
 OutputDir={#Output}
 OutputBaseFilename={#ProgramName}-{#Version}-win-x64-setup
 SetupIconFile={#Icon}
 UninstallDisplayIcon={app}\{#Program}
 UninstallDisplayName={#DisplayName}
-WizardStyle=modern
+; the look: light or dark as Windows is set, the app's logo in the corner of every page and
+; beside the first and the last one
+WizardStyle=modern dynamic
+WizardSmallImageFile={#Wizard}corner-55.png,{#Wizard}corner-83.png,{#Wizard}corner-110.png,{#Wizard}corner-138.png
+WizardImageFile={#Wizard}side-164.png,{#Wizard}side-246.png,{#Wizard}side-328.png
+DisableWelcomePage=no
+LicenseFile={#Licence}
 Compression=lzma2/max
 SolidCompression=yes
 ChangesAssociations=yes
@@ -50,12 +64,16 @@ ChangesAssociations=yes
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "sendto"; Description: "Add to the ""Send to"" menu: select files in a folder, right-click, and send them here to convert"
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
+Name: "sendto"; Description: "Add to the ""&Send to"" menu: select files in a folder, right-click, and send them here to convert"; GroupDescription: "Windows integration:"
+Name: "openwith"; Description: "List under ""&Open with"" for the files it converts (no file type's default program is changed)"; GroupDescription: "Windows integration:"
 
 [InstallDelete]
 ; an update leaves nothing of the version before it
 Type: filesandordirs; Name: "{app}\app"
+; nor a shortcut that was wanted last time and is not wanted now
+Type: files; Name: "{autodesktop}\{#DisplayName}.lnk"; Tasks: not desktopicon
+Type: files; Name: "{usersendto}\{#DisplayName}.lnk"; Tasks: not sendto
 
 [Files]
 Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
@@ -67,11 +85,11 @@ Name: "{usersendto}\{#DisplayName}"; Filename: "{app}\{#Program}"; Comment: "{#S
 
 [Registry]
 ; "Open with": offered for the file types below, without becoming the default for any of them
-Root: HKA; Subkey: "{#OpenWith}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#DisplayName}"; Flags: uninsdeletekey
-Root: HKA; Subkey: "{#OpenWith}\shell\open\command"; ValueType: string; ValueData: """{app}\{#Program}"" ""%1"""
+Root: HKA; Subkey: "{#OpenWith}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#DisplayName}"; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "{#OpenWith}\shell\open\command"; ValueType: string; ValueData: """{app}\{#Program}"" ""%1"""; Tasks: openwith
 #define Rest Types
 #sub OneType
-Root: HKA; Subkey: "{#OpenWith}\SupportedTypes"; ValueType: string; ValueName: ".{#Copy(Rest, 1, Pos("|", Rest + "|") - 1)}"; ValueData: ""
+Root: HKA; Subkey: "{#OpenWith}\SupportedTypes"; ValueType: string; ValueName: ".{#Copy(Rest, 1, Pos("|", Rest + "|") - 1)}"; ValueData: ""; Tasks: openwith
 #endsub
 #for {Rest = Types; Rest != ""; Rest = Copy(Rest, Pos("|", Rest + "|") + 1)} OneType
 ; found by name: Win+R, the Start menu's search
@@ -81,6 +99,13 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#Progra
 Filename: "{app}\{#Program}"; Description: "{cm:LaunchProgram,{#DisplayName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// "Open with" was wanted by an earlier installation and is not wanted now: take it out again.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and not WizardIsTaskSelected('openwith') then
+    RegDeleteKeyIncludingSubkeys(HKA, '{#OpenWith}');
+end;
+
 // Settings and the downloaded engines are kept in a folder of their own, so that an update or a
 // reinstall finds them again. An uninstall asks; one run without questions keeps them.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

@@ -52,7 +52,9 @@ publishers, and checks what it downloaded against their checksums. Everything el
   actually quicker.
 - **Simple, precise when wanted.** One slider trades size for quality. The *Detailed settings*
   panel gives exact control: resolution, bitrate, codec, target size, password and more.
-- **Offline.** Your files never leave your computer.
+- **Offline.** Your files never leave your computer. The app only goes online for what you
+  agree to: fetching the engines, and — if you say yes when it asks — one look per start for a
+  newer version.
 - **A command line** for scripts, in the same download.
 
 All the details — every setting, what "lossless" covers, speed measurements, the command line,

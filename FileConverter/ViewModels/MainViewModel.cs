@@ -267,6 +267,90 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    // ---------- new versions ----------
+    //
+    // Nothing here connects anywhere until the user has said yes to being told about new
+    // versions. After a "no" the question is not put again and no connection is ever made for
+    // this; after a "yes" the app looks once at each start — see UpdateCheck.
+
+    /// <summary>How the newest released version is learnt. (Tests put their own answer here: they stay offline.)</summary>
+    internal Func<CancellationToken, Task<Version?>> FindLatestVersion { get; set; } = UpdateCheck.FindLatestVersionAsync;
+
+    private bool _lookedForUpdate;
+
+    /// <summary>The question "tell you about new versions?" is showing, because it has never been answered.</summary>
+    [ObservableProperty]
+    private bool _askAboutUpdates;
+
+    /// <summary>A version newer than this one ("2.4.0"), once this start's look has found one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UpdateAvailable))]
+    [NotifyPropertyChangedFor(nameof(UpdateText))]
+    private string? _newVersion;
+
+    public bool UpdateAvailable => NewVersion != null;
+    public string UpdateText => $"Version {NewVersion} is available — open the download page";
+
+    /// <summary>The user wants to be told about new versions.</summary>
+    public bool NotifyAboutUpdates => _settings.NotifyAboutUpdates == true;
+
+    /// <summary>
+    /// Called once, when the app has started as a window: puts the question the first time, and
+    /// from then on looks for a new version if — and only if — the answer was yes.
+    /// </summary>
+    public void BeginUpdateNotices()
+    {
+        if (_settings.NotifyAboutUpdates == null) AskAboutUpdates = true;
+        else if (_settings.NotifyAboutUpdates == true) _ = LookForUpdateAsync();
+    }
+
+    /// <summary>The answer to the question: "yes" or "no".</summary>
+    [RelayCommand]
+    private void AnswerUpdateQuestion(string answer) => SetUpdateNotices(answer == "yes");
+
+    /// <summary>The same choice, changed later from the menu.</summary>
+    [RelayCommand]
+    private void ToggleUpdateNotices() => SetUpdateNotices(!NotifyAboutUpdates);
+
+    private void SetUpdateNotices(bool wanted)
+    {
+        _settings.NotifyAboutUpdates = wanted;
+        AskAboutUpdates = false;
+        OnPropertyChanged(nameof(NotifyAboutUpdates));
+        Persist();
+        if (wanted) _ = LookForUpdateAsync();
+        else NewVersion = null;
+    }
+
+    private async Task LookForUpdateAsync()
+    {
+        if (_lookedForUpdate) return; // once per start, however often the choice is switched
+        _lookedForUpdate = true;
+        try
+        {
+            var latest = await FindLatestVersion(CancellationToken.None);
+            if (latest != null && NotifyAboutUpdates && UpdateCheck.IsNewer(latest, AppInfo.Version))
+                NewVersion = latest.ToString();
+        }
+        catch
+        {
+            // a look that fails is no news; the next start looks again
+        }
+    }
+
+    [RelayCommand]
+    private void OpenDownloadPage()
+    {
+        try
+        {
+            PlatformServices.Current.Open(UpdateCheck.DownloadPage);
+        }
+        catch (Exception ex)
+        {
+            OverallStatus = "Could not open the download page: " + ex.Message;
+        }
+    }
+
     // ---------- detailed settings ----------
 
     /// <summary>The Detailed Settings panel is showing.</summary>

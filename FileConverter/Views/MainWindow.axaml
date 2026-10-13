@@ -69,8 +69,29 @@
             </StackPanel>
         </Grid>
 
+        <StackPanel Grid.Row="1">
+        <!-- ═══ the question about new versions — put once, until it is answered ═══ -->
+        <Border Background="{DynamicResource InfoBannerBrush}"
+                BorderBrush="{DynamicResource InfoBannerBorderBrush}" BorderThickness="1" CornerRadius="8"
+                Padding="14,8" Margin="0,0,0,12" IsVisible="{Binding AskAboutUpdates}">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="Tell you here when a new version is out?" />
+                    <TextBlock Classes="dim" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
+                               Text="With Yes, the app asks GitHub for the newest version's number once each time it starts — nothing about you or your files is sent, and nothing is downloaded. With No, it never connects for this and does not ask again." />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="accent" Content="Yes" VerticalAlignment="Center" Margin="14,0,0,0" MinWidth="64"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding AnswerUpdateQuestionCommand}" CommandParameter="yes" />
+                <Button Grid.Column="2" Content="No" VerticalAlignment="Center" Margin="8,0,0,0" MinWidth="64"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding AnswerUpdateQuestionCommand}" CommandParameter="no"
+                        ToolTip.Tip="You can still switch it on later, in the ··· menu at the bottom right." />
+            </Grid>
+        </Border>
+
         <!-- ═══ setup banner ═══ -->
-        <Border Grid.Row="1" Background="{DynamicResource SetupBannerBrush}"
+        <Border Background="{DynamicResource SetupBannerBrush}"
                 BorderBrush="{DynamicResource SetupBannerBorderBrush}" BorderThickness="1" CornerRadius="8"
                 Padding="14,10" Margin="0,0,0,12" IsVisible="{Binding SetupNeeded}">
             <Grid ColumnDefinitions="*,Auto">
@@ -86,6 +107,7 @@
                         Command="{Binding SetupToolsCommand}" IsEnabled="{Binding !SetupRunning}" />
             </Grid>
         </Border>
+        </StackPanel>
 
         <!-- ═══ file list, with the detailed settings beside it when they are switched on ═══ -->
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
@@ -403,7 +425,12 @@
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                 <TextBlock Classes="dim" Text="{Binding VersionText}" FontSize="11.5" VerticalAlignment="Center" />
-                <Button Classes="icon" Width="28" Height="22" Padding="0" ToolTip.Tip="Appearance, settings file and licences">
+                <!-- a newer version is out -->
+                <Button Classes="icon" Width="24" Height="22" Padding="0" IsVisible="{Binding UpdateAvailable}"
+                        Command="{Binding OpenDownloadPageCommand}" ToolTip.Tip="{Binding UpdateText}">
+                    <Path Data="{StaticResource IconWarning}" Stroke="{DynamicResource WarnBrush}" Width="15" Height="15" />
+                </Button>
+                <Button Classes="icon" Width="28" Height="22" Padding="0" ToolTip.Tip="Appearance, new versions, settings file and licences">
                     <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
                         <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
@@ -411,6 +438,14 @@
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout Placement="TopEdgeAlignedRight">
+                            <MenuItem Header="{Binding UpdateText}" Command="{Binding OpenDownloadPageCommand}"
+                                      IsVisible="{Binding UpdateAvailable}">
+                                <MenuItem.Icon>
+                                    <Path Data="{StaticResource IconWarning}" Stroke="{DynamicResource WarnBrush}" StrokeThickness="1.4"
+                                          StrokeLineCap="Round" StrokeJoin="Round" Stretch="Uniform" Width="14" Height="14" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <Separator IsVisible="{Binding UpdateAvailable}" />
                             <MenuItem Header="Dark" ToggleType="Radio" IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
                                       Command="{Binding SetThemeCommand}" CommandParameter="dark" />
                             <MenuItem Header="Light" ToggleType="Radio" IsChecked="{Binding IsLightTheme, Mode=OneWay}"
@@ -418,6 +453,10 @@
                             <MenuItem Header="Match the system" ToggleType="Radio" IsChecked="{Binding IsSystemTheme, Mode=OneWay}"
                                       Command="{Binding SetThemeCommand}" CommandParameter="system" />
                             <Separator />
+                            <MenuItem Header="Tell me about new versions" ToggleType="CheckBox"
+                                      IsChecked="{Binding NotifyAboutUpdates, Mode=OneWay}"
+                                      Command="{Binding ToggleUpdateNoticesCommand}"
+                                      ToolTip.Tip="When ticked, the app asks GitHub for the newest version's number once each time it starts, and shows a warning sign down here when there is one. Nothing about you or your files is sent. When not ticked, it never connects for this." />
                             <MenuItem Header="Open the settings folder" Command="{Binding OpenSettingsFolderCommand}" />
                             <MenuItem Header="Licences" Command="{Binding OpenLicencesCommand}" />
                         </MenuFlyout>

@@ -45,6 +45,9 @@ public partial class App : Application
             // files handed over by "Open with", a drop on the icon, or a desktop entry's %F
             var files = (desktop.Args ?? []).Where(a => !a.StartsWith("--")).ToList();
             if (files.Count > 0) _ = viewModel.AddPathsAsync(files);
+
+            // new versions: the question the first time; afterwards one look per start, if wanted
+            viewModel.BeginUpdateNotices();
         }
 
         base.OnFrameworkInitializationCompleted();
