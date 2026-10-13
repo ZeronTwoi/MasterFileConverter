@@ -307,7 +307,15 @@ public static class AppUpdater
         _hold?.Dispose();
         _hold = null;
         // for the next start to tell whether it went through, see TakeOutcome
-        try { File.WriteAllText(PendingNote, update.Version.ToString()); } catch { /* then that start says nothing */ }
+        try
+        {
+            Directory.CreateDirectory(Os.DataDirectory);
+            File.WriteAllText(PendingNote, update.Version.ToString());
+        }
+        catch
+        {
+            // then that start says nothing
+        }
     }
 
     private const string RunningTwice = "Another copy of the app is running. Close it, then update again.";
