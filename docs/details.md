@@ -355,9 +355,10 @@ downloaded engines against their publishers' checksums. For it, on Windows 11:
 - **Downloaded engines:** FFmpeg for Windows and the three 7-Zip packages were fetched and
   matched their publishers' checksums; a deliberately wrong checksum was refused and the file
   deleted.
-- **The Linux download** was built, and its contents looked at (its licences, the install
-  script's permissions), but 2.2.0 has not been run on Linux: its Linux code differs from 2.1.0
-  only in where FFmpeg's and 7-Zip's addresses and checksums are read from.
+- **The release itself** was built by the GitHub workflow, which ran through on both a Windows
+  and a Linux (Ubuntu) machine: the engines fetched, the test suite, the download built and
+  packed, the download's own `--self-test`, the installer, and the release with its three files.
+  That is the only place 2.2.0 has run on Linux — no window on a desktop there, see below.
 
 Both downloads of version 2.1.0, built from the same source:
 
@@ -385,8 +386,6 @@ Not checked yet, for want of the hardware or the service:
   AMD on either system, and VA-API on Linux. A card's encoder is only used after it passes
   the app's own test encode; otherwise the CPU encodes.
 - **LibreOffice on Windows** — the same code that passed on Linux, but the test machine had Word.
-- **The GitHub workflow itself.** Its steps changed for 2.1 (the names now come from
-  `Directory.Build.props`) and again for 2.2 (the installer), and it has not been seen to run
-  since. What it does was done by hand
-  on both systems instead — on Linux inside the emulated machine, with a .NET SDK installed
-  there: `build/publish.sh` built and packed the download, and the result started.
+- **The released files on a fresh machine.** The installer and downloads that were tried by
+  hand were built on the development machine from the same source; the ones attached to the
+  release were built by GitHub and have only been checked there, by the workflow's self-test.
