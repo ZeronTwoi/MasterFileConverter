@@ -3,7 +3,7 @@
   <!-- Used on Windows only. The version, name and description written here are what an editor
        reads; a build puts the current ones from Directory.Build.props in their place
        (FcWriteManifest in FileConverter.csproj), so they need no updating by hand. -->
-  <assemblyIdentity type="win32" version="2.2.0.0" name="Zeronoid.MasterFileConverter"/>
+  <assemblyIdentity type="win32" version="2.3.0.0" name="Zeronoid.MasterFileConverter"/>
   <description>Master File Converter</description>
 
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">

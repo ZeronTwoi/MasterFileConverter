@@ -20,12 +20,14 @@ The Windows downloads have no Linux code or libraries in them and the Linux down
 ones: the windowing backend (Win32 / X11), the platform code and every native library are
 chosen per system when the download is built.
 
-**The Windows installer** installs for the current user only (no administrator rights), into
-`%LOCALAPPDATA%\Programs\Master File Converter`. It adds a Start menu entry, an entry under
-"Installed apps" with an uninstaller, the app under "Open with" for the file types it reads
-(without making it the default for any), and — unless unticked — an entry in the "Send to"
-menu, which hands a selection of files to one window. Uninstalling asks whether settings and
-downloaded engines should go too.
+**The Windows installer** installs for the current user only (no administrator rights), by
+default into `%LOCALAPPDATA%\Programs\Master File Converter`. Its pages show the licence, ask
+where to install and what to add — a desktop shortcut, an entry in the "Send to" menu (which
+hands a selection of files to one window), and the app under "Open with" for the file types it
+reads, without making it the default for any — and at the end offer to start the app. It always
+adds a Start menu entry and an entry under "Installed apps" with an uninstaller. It follows
+Windows' light or dark mode, and an update remembers the choices made before. Uninstalling asks
+whether settings and downloaded engines should go too.
 
 An unpacked folder shows only what you start — `MasterFileConverter.exe` (and
 `MasterFileConverter-cli.exe` for scripts, see [Command line](#command-line)) on Windows,
@@ -218,6 +220,15 @@ the target of every compatible file at once.
   targeting for audio/video (two-pass encoding on slower speed presets), a search for the
   highest quality that fits for images, and compression levels for archives.
 - Dark by default; the ··· menu at the bottom right switches to a light theme or to following the system, and opens the settings folder.
+- **New versions, if you want to hear of them.** The first start asks once whether the app
+  should tell you when a new version is out. With *No* it never asks again and never connects
+  for this. With *Yes* it looks once at each start, and a newer version shows as a warning sign
+  beside the ··· menu; a click opens the download page. Nothing is downloaded or installed by
+  itself. The look is one request without content to GitHub for the address of the latest
+  release — the version number is read from the address that comes back — so GitHub sees what
+  any website sees, the computer's internet address, and nothing about you or your files. The
+  ··· menu's *Tell me about new versions* changes the choice at any time. The command line
+  never looks.
 
 Settings are kept in `%LOCALAPPDATA%\MasterFileConverter\settings.json` on Windows and
 `~/.config/masterfileconverter/settings.json` on Linux; the downloaded engines lie in `tools`
@@ -327,8 +338,9 @@ Windows and the other way round.
 runs) from `build\windows\installer.iss`, with [Inno Setup](https://jrsoftware.org/isinfo.php)
 (`winget install JRSoftware.InnoSetup`); without it the folder and the zip are still built. It
 installs for the current user, without administrator rights: a Start menu entry, an entry under
-"Installed apps" with an uninstaller, "Open with" for the file types the app reads, and
-"Send to". Uninstalling asks before removing settings and downloaded engines.
+"Installed apps" with an uninstaller, and, as the user chooses, a desktop shortcut, "Send to"
+and "Open with" for the file types the app reads. Uninstalling asks before removing settings
+and downloaded engines. The logo on its pages is drawn by `build/MakeIcon.cs`, like every other.
 
 **The licences** go into every download's `app/licenses` folder, which the window's ··· menu
 opens: `LICENSE`, `THIRD-PARTY-NOTICES.md`, the texts in `build/licenses`, and the licence and
@@ -340,6 +352,22 @@ pull requests and on demand, and for a tag such as `v2.2.0` attaches the install
 downloads to a GitHub release.
 
 ## What has been checked
+
+Version 2.3.0 added the notice of new versions and gave the Windows installer its pages. For it,
+on Windows 11:
+
+- **The notice of new versions:** the real look-up was run against GitHub and read the latest
+  release's number; in the window, driven by tests with a made-up answer instead of the
+  internet: the question, *No* (no look-up then or at the next start), *Yes* (one look-up per
+  start, the warning sign, gone when switched off).
+- **The installer's pages** were gone through in light and in dark mode up to "Ready to
+  Install" and looked at, then cancelled. It was not installed with: the test machine had
+  version 2.2.0 installed for real use, which a trial would have replaced. What copies the
+  files and registers the app is unchanged from 2.2.0.
+- **The shipped window** was opened once from the Windows download: the question shows there.
+- **`--self-test`** by the Windows download: 349 passed, 0 failed, 0 skipped. **The test suite:**
+  200 passed, 1 skipped (the case for machines without a full 7-Zip).
+- **The Linux download** was built but not run.
 
 Version 2.2.0 added the Windows installer, the licences in the downloads and the check of
 downloaded engines against their publishers' checksums. For it, on Windows 11:

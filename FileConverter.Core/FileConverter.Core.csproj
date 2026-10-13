@@ -50,6 +50,9 @@ public static class AppInfo
     /// <summary>One line on what the app does.</summary>
     public const string Summary = "$(FcSummary)";
 
+    /// <summary>Where the app lives: its source and, under /releases/latest, its newest version.</summary>
+    public const string Website = "$(FcWebsite)";
+
     public const string Version = "$(Version)";
 }]]></FcAppInfoText>
         </PropertyGroup>

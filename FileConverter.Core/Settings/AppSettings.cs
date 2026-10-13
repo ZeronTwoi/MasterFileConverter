@@ -42,6 +42,12 @@ public sealed class AppSettings
     /// <summary>"dark", "light" or "system".</summary>
     public string Theme { get; set; } = "dark";
 
+    /// <summary>
+    /// Look once at each start whether a newer version is out? Nothing as long as the user has not
+    /// been asked; after a "no" the app never asks again and never connects for this.
+    /// </summary>
+    public bool? NotifyAboutUpdates { get; set; }
+
     public double WindowWidth { get; set; }
     public double WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
