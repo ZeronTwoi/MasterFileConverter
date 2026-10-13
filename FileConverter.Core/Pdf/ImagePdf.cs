@@ -44,6 +44,12 @@ internal sealed record PdfPicture
 
     public long DataLength => Data.Sum(segment => segment.Length);
 
+    /// <summary>
+    /// How many of the picture's pixels make an inch on the page: 96 as on a screen, unless the
+    /// picture was drawn for the page at a resolution of its own (a drawing turned into pixels).
+    /// </summary>
+    public double PixelsPerInch { get; init; } = 96;
+
     /// <summary>Size as shown: a picture lying on its side is as wide as it is stored tall.</summary>
     public (int Width, int Height) DisplaySize => Orientation >= 5 ? (Height, Width) : (Width, Height);
 

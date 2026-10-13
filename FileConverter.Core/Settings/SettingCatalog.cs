@@ -106,8 +106,9 @@ public static class SettingCatalog
                 PagesFromPdf(list, target);
                 if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, "pdf")) DocumentEngine(list);
                 else if (FormatRegistry.GetDocumentKind(sourceExtension) == DocumentKind.Sheet) PdfFromSheet(list);
-                else if (sourceExtension != "pdf") PdfFromText(list);
+                else if (FormatRegistry.GetDocumentKind(sourceExtension) == DocumentKind.Text) PdfFromText(list);
             }
+            else if (sourceExtension == "svg") PictureFromDrawing(list, target);
             else Picture(list, target, resize: true, metadata: true);
         }
         else if (target == "gif")
@@ -129,7 +130,8 @@ public static class SettingCatalog
             // what an office program lays out follows the document's own page setup; the built-in converter asks
             else if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, target)) DocumentEngine(list);
             else if (FormatRegistry.GetDocumentKind(sourceExtension) == DocumentKind.Sheet) PdfFromSheet(list);
-            else PdfFromText(list);
+            else if (FormatRegistry.GetDocumentKind(sourceExtension) == DocumentKind.Text) PdfFromText(list);
+            // (a drawing or Publisher file is laid out by LibreOffice, on the pages it has)
         }
         else if (target is "pptx" or "odp" && sourceExtension == "pdf")
         {
@@ -218,6 +220,19 @@ public static class SettingCatalog
                        "Type a colour name or a hex value such as #000000."
             });
         }
+    }
+
+    /// <summary>A drawing (SVG) has no pixels until it is given some: the resolution says how many.</summary>
+    private static void PictureFromDrawing(List<SettingDefinition> list, string target)
+    {
+        list.Add(new(K.Dpi, "Resolution (dpi)", SettingKind.Number)
+        {
+            Group = "Size", Min = 36, Max = 1200, Automatic = "Auto (300)",
+            Help = "Dots per inch the drawing is drawn at. At 96 it comes out as many pixels as the drawing says it is; " +
+                   "300 is print resolution — a little over three times as wide and high. It is drawn at that size, not enlarged, so it is sharp at any."
+        });
+        Picture(list, target, resize: false, metadata: false);
+        Resize(list, upscale: false);
     }
 
     private static void Resize(List<SettingDefinition> list, bool upscale)

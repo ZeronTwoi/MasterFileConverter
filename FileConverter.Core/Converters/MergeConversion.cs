@@ -91,6 +91,21 @@ public static class MergeConversion
         }
     }
 
+    /// <summary>
+    /// The pictures to combine, one after another: every file, and of a TIFF of several pages
+    /// every page — a scanned document of ten pages gives ten pages, not its first.
+    /// </summary>
+    private static List<(string Path, int Frame)> Pictures(IReadOnlyList<string> inputs)
+    {
+        var pictures = new List<(string, int)>(inputs.Count);
+        foreach (var input in inputs)
+        {
+            int pages = FormatRegistry.GetExtension(input) is "tif" or "tiff" ? ImageConversion.PageCount(input) : 1;
+            for (int page = 0; page < pages; page++) pictures.Add((input, page));
+        }
+        return pictures;
+    }
+
     // ---------- images → one PDF ----------
 
     /// <summary>
@@ -100,10 +115,11 @@ public static class MergeConversion
     /// its source was lossy already, as a top-quality JPEG. Nothing is compressed a second time,
     /// which is what makes this as fast as copying the files.
     /// </summary>
-    public static void ImagesToPdf(IReadOnlyList<string> inputs, string output,
+    public static void ImagesToPdf(IReadOnlyList<string> files, string output,
         ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
     {
         ImageEngine.EnsureInitialized();
+        var inputs = Pictures(files);
         if (options.HasSizeTarget)
         {
             ImagesToSmallerPdf(inputs, output, options, progress, ct);
@@ -118,7 +134,7 @@ public static class MergeConversion
             int prepared = 0;
             ForEachIndex(inputs.Count, ct, i =>
             {
-                pictures[i] = PreparePicture(inputs[i], tempDir, i, options.Speed);
+                pictures[i] = PreparePicture(inputs[i].Path, inputs[i].Frame, tempDir, i, options.Speed);
                 progress?.Report(0.6 * Interlocked.Increment(ref prepared) / inputs.Count);
             });
 
@@ -144,7 +160,7 @@ public static class MergeConversion
     /// <paramref name="tempDir"/> as a PNG (with its transparency beside it) when the source was
     /// lossless or has transparency, otherwise as a top-quality JPEG.
     /// </summary>
-    private static PdfPicture PreparePicture(string input, string tempDir, int index, SpeedPreset speed)
+    private static PdfPicture PreparePicture(string input, int frame, string tempDir, int index, SpeedPreset speed)
     {
         var ext = FormatRegistry.GetExtension(input);
         var direct = ext switch
@@ -155,7 +171,13 @@ public static class MergeConversion
         };
         if (direct != null) return direct;
 
-        using var image = ImageConversion.LoadStill(input, ext);
+        // a drawing among the pictures is turned into pixels for its page, at print resolution
+        return Prepared(input, frame, ext, tempDir, index, speed) with { PixelsPerInch = ext == "svg" ? ImageConversion.DrawingDpi : 96 };
+    }
+
+    private static PdfPicture Prepared(string input, int frame, string ext, string tempDir, int index, SpeedPreset speed)
+    {
+        using var image = ImageConversion.LoadStill(input, ext, frame);
         bool keepExact = ImageConversion.IsLosslessSource(ext) || image.HasAlpha;
         string pageFormat = keepExact ? "png" : "jpg";
         ImageConversion.Normalize(image, pageFormat, strip: false);
@@ -208,9 +230,9 @@ public static class MergeConversion
     /// <summary>Page size and the picture's place on it, in points.</summary>
     private static PdfPicturePage PlaceOnPage(PdfPicture picture, PageSize? paper, double margin)
     {
-        // 96 dpi pixels → points; keep pages inside PDF limits and above a readable minimum.
+        // pixels (96 to the inch, usually) → points; keep pages inside PDF limits and above a readable minimum.
         var (pixelWidth, pixelHeight) = picture.DisplaySize;
-        double width = pixelWidth * 72.0 / 96.0, height = pixelHeight * 72.0 / 96.0;
+        double width = pixelWidth * 72.0 / picture.PixelsPerInch, height = pixelHeight * 72.0 / picture.PixelsPerInch;
         double scale = Math.Min(1.0, 14000.0 / Math.Max(width, height));
         if (Math.Max(width, height) < 144) scale = 144.0 / Math.Max(Math.Max(width, height), 1);
         width *= scale;
@@ -230,7 +252,7 @@ public static class MergeConversion
     /// The size slider's version: the pictures are laid out by QuestPDF, which stores them at a
     /// lower resolution and JPEG quality the smaller the result is asked to be.
     /// </summary>
-    private static void ImagesToSmallerPdf(IReadOnlyList<string> inputs, string output,
+    private static void ImagesToSmallerPdf(List<(string Path, int Frame)> inputs, string output,
         ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
     {
         var tempDir = WorkFiles.NewPath("pdf");
@@ -241,7 +263,7 @@ public static class MergeConversion
             int prepared = 0;
             ForEachIndex(inputs.Count, ct, i =>
             {
-                pages[i] = PreparePdfPage(inputs[i], tempDir, i);
+                pages[i] = PreparePdfPage(inputs[i].Path, inputs[i].Frame, tempDir, i);
                 progress?.Report(0.5 * Interlocked.Increment(ref prepared) / inputs.Count);
             });
 
@@ -311,18 +333,23 @@ public static class MergeConversion
     /// photos — is decoded once and handed over as a PNG when the source was lossless or
     /// has transparency, otherwise as a top-quality JPEG.
     /// </summary>
-    private static (string Path, float WidthPt, float HeightPt) PreparePdfPage(string input, string tempDir, int index)
+    private static (string Path, float WidthPt, float HeightPt) PreparePdfPage(string input, int frame, string tempDir, int index)
     {
         var ext = FormatRegistry.GetExtension(input);
-        var header = new MagickImageInfo(input);
-        bool upright = header.Orientation is Orientation.Undefined or Orientation.TopLeft;
-        bool embeddable = ext is "jpg" or "jpeg" or "png" && upright && header.ColorSpace != ColorSpace.CMYK;
+        bool embeddable = false;
+        uint width = 0, height = 0;
+        if (ext is "jpg" or "jpeg" or "png")
+        {
+            var header = new MagickImageInfo(input);
+            bool upright = header.Orientation is Orientation.Undefined or Orientation.TopLeft;
+            embeddable = upright && header.ColorSpace != ColorSpace.CMYK;
+            (width, height) = (header.Width, header.Height);
+        }
 
         string pagePath = input;
-        uint width = header.Width, height = header.Height;
         if (!embeddable)
         {
-            using var image = ImageConversion.LoadStill(input, ext);
+            using var image = ImageConversion.LoadStill(input, ext, frame);
             bool keepExact = ImageConversion.IsLosslessSource(ext) || image.HasAlpha;
             string pageFormat = keepExact ? "png" : "jpg";
             ImageConversion.Normalize(image, pageFormat, strip: false);
@@ -337,9 +364,11 @@ public static class MergeConversion
             height = image.Height;
         }
 
-        // 96 dpi pixels → points; keep pages inside PDF limits and above a readable minimum.
-        double wPt = width * 72.0 / 96.0;
-        double hPt = height * 72.0 / 96.0;
+        // pixels (96 to the inch; a drawing was drawn at print resolution) → points; keep pages inside
+        // PDF limits and above a readable minimum.
+        double pixelsPerInch = ext == "svg" ? ImageConversion.DrawingDpi : 96;
+        double wPt = width * 72.0 / pixelsPerInch;
+        double hPt = height * 72.0 / pixelsPerInch;
         double scale = Math.Min(1.0, 14000.0 / Math.Max(wPt, hPt));
         if (Math.Max(wPt, hPt) < 144) scale = 144.0 / Math.Max(Math.Max(wPt, hPt), 1);
         return (pagePath, (float)(wPt * scale), (float)(hPt * scale));
@@ -347,10 +376,11 @@ public static class MergeConversion
 
     // ---------- images → one animated GIF (slideshow) ----------
 
-    private static void ImagesToGif(IReadOnlyList<string> inputs, string output,
+    private static void ImagesToGif(IReadOnlyList<string> files, string output,
         ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
     {
         ImageEngine.EnsureInitialized();
+        var inputs = Pictures(files);
 
         // GIF frames are stored nearly uncompressed, so slides are bounded to 1280 px; the size slider
         // scales that down. Each of these has a precise setting that takes its place.
@@ -366,13 +396,13 @@ public static class MergeConversion
         try
         {
             // the first picture defines the canvas every other slide is fitted onto
-            slides[0] = LoadSlide(inputs[0], maxSide, detail);
+            slides[0] = LoadSlide(inputs[0].Path, inputs[0].Frame, maxSide, detail);
             uint canvasW = slides[0]!.Width, canvasH = slides[0]!.Height;
 
             int loaded = 0;
             ForEachIndex(inputs.Count, ct, i =>
             {
-                var img = slides[i] ??= LoadSlide(inputs[i], maxSide, detail);
+                var img = slides[i] ??= LoadSlide(inputs[i].Path, inputs[i].Frame, maxSide, detail);
                 if (i > 0)
                 {
                     // uniform canvas: fit, then pad onto white so mixed sizes line up
@@ -404,9 +434,9 @@ public static class MergeConversion
         }
     }
 
-    private static MagickImage LoadSlide(string input, double maxSide, DetailSettings detail)
+    private static MagickImage LoadSlide(string input, int frame, double maxSide, DetailSettings detail)
     {
-        var img = ImageConversion.LoadStill(input, FormatRegistry.GetExtension(input));
+        var img = ImageConversion.LoadStill(input, FormatRegistry.GetExtension(input), frame);
         ImageConversion.Normalize(img, "gif", strip: false);
         if (detail.Has(K.MaxWidth) || detail.Has(K.MaxHeight))
             ImageConversion.ApplyResize(img, detail);
@@ -422,16 +452,17 @@ public static class MergeConversion
     /// (<see cref="TiffFiles"/>) — written as one collection, the pages would be compressed one
     /// after the other (11 s against 1 s for 26 photos).
     /// </summary>
-    private static void ImagesToTiff(IReadOnlyList<string> inputs, string output,
+    private static void ImagesToTiff(IReadOnlyList<string> files, string output,
         ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
     {
         ImageEngine.EnsureInitialized();
+        var inputs = Pictures(files);
 
         var pages = new byte[inputs.Count][];
         int done = 0;
         ForEachIndex(inputs.Count, ct, i =>
         {
-            using var page = LoadTiffPage(inputs[i], options);
+            using var page = LoadTiffPage(inputs[i].Path, inputs[i].Frame, options);
             pages[i] = page.ToByteArray(MagickFormat.Tiff);
             progress?.Report(0.9 * Interlocked.Increment(ref done) / inputs.Count);
         });
@@ -442,9 +473,9 @@ public static class MergeConversion
         progress?.Report(1.0);
     }
 
-    private static MagickImage LoadTiffPage(string input, ConversionOptions options)
+    private static MagickImage LoadTiffPage(string input, int frame, ConversionOptions options)
     {
-        var img = ImageConversion.LoadStill(input, FormatRegistry.GetExtension(input));
+        var img = ImageConversion.LoadStill(input, FormatRegistry.GetExtension(input), frame);
         try
         {
             ImageConversion.Normalize(img, "tiff", strip: false);
@@ -460,7 +491,7 @@ public static class MergeConversion
         }
     }
 
-    private static void ImagesToTiffInOneGo(IReadOnlyList<string> inputs, string output,
+    private static void ImagesToTiffInOneGo(List<(string Path, int Frame)> inputs, string output,
         ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
     {
         var loaded = new MagickImage?[inputs.Count];
@@ -469,7 +500,7 @@ public static class MergeConversion
             int done = 0;
             ForEachIndex(inputs.Count, ct, i =>
             {
-                loaded[i] = LoadTiffPage(inputs[i], options);
+                loaded[i] = LoadTiffPage(inputs[i].Path, inputs[i].Frame, options);
                 progress?.Report(0.8 * Interlocked.Increment(ref done) / inputs.Count);
             });
 

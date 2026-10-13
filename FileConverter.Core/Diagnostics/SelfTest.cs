@@ -173,6 +173,8 @@ public static class SelfTest
             return "only an office program reads the old .doc format";
         if (sourceExt == "ppt" && engine == FileCategory.Document && chosenEngine == "builtin")
             return "only an office program reads the old .ppt format";
+        if (sourceExt is "odg" or "pub" && engine == FileCategory.Document && ToolLocator.LibreOfficePath == null)
+            return "LibreOffice is not installed (only it reads drawings and Publisher files)";
         return null;
     }
 
@@ -268,6 +270,20 @@ public static class SelfTest
         yield return Still("tiff", MagickFormat.Tiff);
         yield return Still("gif", MagickFormat.Gif);
         yield return ReadyMade("heic", HeicPicture);
+
+        // a drawing: shapes, a gradient, a line of text, and nothing behind them
+        var drawing = Path.Combine(dir, "drawing.svg");
+        File.WriteAllText(drawing, """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240">
+              <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f6fd0"/><stop offset="1" stop-color="#f2c14e"/></linearGradient></defs>
+              <rect x="20" y="20" width="180" height="120" rx="12" fill="url(#g)"/>
+              <circle cx="240" cy="150" r="50" fill="#3fb68b" stroke="#1a1a1a" stroke-width="4"/>
+              <path d="M30 200 Q 90 150 150 200 T 270 200" fill="none" stroke="#d0443c" stroke-width="6"/>
+              <text x="30" y="230" font-family="sans-serif" font-size="18" fill="#1a1a1a">Merhaba</text>
+            </svg>
+            """);
+        yield return new Sample("svg", "svg", drawing);
 
         Sample ico;
         try
@@ -447,6 +463,27 @@ public static class SelfTest
             }
         }
         samples.Add(pptSample);
+
+        // A drawing with a text frame, in the format only LibreOffice reads. (A Publisher file is one
+        // only Microsoft Publisher writes, so there is no sample of it to make.)
+        var odg = Path.Combine(dir, "poster.odg");
+        using (var package = new Documents.OdfPackage(odg, "application/vnd.oasis.opendocument.graphics"))
+        {
+            package.Add("content.xml", System.Text.Encoding.UTF8.GetBytes("""
+                <?xml version="1.0" encoding="UTF-8"?>
+                <office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+                    xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+                    xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0" office:version="1.3">
+                  <office:body><office:drawing><draw:page draw:name="page1">
+                    <draw:frame svg:x="2cm" svg:y="2cm" svg:width="12cm" svg:height="2cm">
+                      <draw:text-box><text:p>Merhaba from a drawing</text:p></draw:text-box>
+                    </draw:frame>
+                  </draw:page></office:drawing></office:body>
+                </office:document-content>
+                """), "text/xml");
+        }
+        samples.Add(new Sample("odg", "odg", odg));
+        samples.Add(new Sample("pub", "pub", null, "only Microsoft Publisher writes .pub files, so there is no sample to try"));
 
         // five pages: enough for the page pictures to be shared out among worker processes
         const int pdfPages = 5;
@@ -726,6 +763,8 @@ public static class SelfTest
                 var (width, _) = CheckImage(produced);
                 if (target is "gif" or "webp" && sample.Animated && FrameCount(produced) != sample.Frames)
                     throw new InvalidOperationException("the animation lost frames");
+                if (target == "tiff" && sample.Extension == "pdf" && FrameCount(produced) != sample.Frames)
+                    throw new InvalidOperationException($"expected {sample.Frames} pages, got {FrameCount(produced)}");
                 detail += $" · {width} px wide";
                 break;
 

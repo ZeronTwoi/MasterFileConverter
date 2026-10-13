@@ -136,6 +136,96 @@ public static class PdfPageExport
         }
     }
 
+    /// <summary>
+    /// Renders the chosen pages into one TIFF file of as many pages — the form a scanned or faxed
+    /// document is kept in. The pages are drawn one after another and compressed side by side,
+    /// each as a TIFF of its own, and joined (<see cref="TiffFiles"/>). Compression is lossless
+    /// always; a page without colour is stored as grey, at a third of the size.
+    /// </summary>
+    public static async Task ToTiffAsync(string input, string output, ConversionOptions options,
+        IProgress<double>? progress, CancellationToken ct)
+    {
+        ImageEngine.EnsureInitialized();
+        using var pdf = new PdfRenderer(input);
+        if (pdf.PageCount == 0) throw new FriendlyException("The PDF contains no pages.");
+
+        var pages = ParsePages(options.Detail.Text(K.Pages), pdf.PageCount);
+        var jobs = Plan(pdf, pages, output, folder: null, "tiff", options);
+        var encoded = new byte[jobs.Count][];
+        int done = 0;
+
+        var rendered = Channel.CreateBounded<(int Slot, PageJob Job, PdfPageImage Page)>(Workers);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var render = Task.Run(async () =>
+        {
+            try
+            {
+                for (int slot = 0; slot < jobs.Count; slot++)
+                {
+                    stop.Token.ThrowIfCancellationRequested();
+                    var page = pdf.Render(jobs[slot].Index, jobs[slot].Width, jobs[slot].Height);
+                    try
+                    {
+                        await rendered.Writer.WriteAsync((slot, jobs[slot], page), stop.Token);
+                    }
+                    catch
+                    {
+                        page.Dispose();
+                        throw;
+                    }
+                }
+                rendered.Writer.Complete();
+            }
+            catch (Exception ex)
+            {
+                rendered.Writer.TryComplete(ex);
+            }
+        }, CancellationToken.None);
+
+        try
+        {
+            await Parallel.ForEachAsync(rendered.Reader.ReadAllAsync(stop.Token),
+                new ParallelOptions { MaxDegreeOfParallelism = Workers, CancellationToken = stop.Token },
+                (item, _) =>
+                {
+                    using (item.Page) encoded[item.Slot] = TiffPage(item.Page, item.Job.Dpi, options);
+                    progress?.Report(0.95 * Interlocked.Increment(ref done) / jobs.Count);
+                    return ValueTask.CompletedTask;
+                });
+        }
+        finally
+        {
+            // whatever happened to the encoders, the renderer must be finished before the PDF is closed
+            stop.Cancel();
+            await render;
+            while (rendered.Reader.TryRead(out var orphan)) orphan.Page.Dispose();
+        }
+        ct.ThrowIfCancellationRequested();
+
+        // a result of 4 GB or more cannot be joined that way: the pages are written as one collection
+        if (!TiffFiles.TryJoin(encoded, output))
+        {
+            using var collection = new MagickImageCollection();
+            foreach (var page in encoded) collection.Add(new MagickImage(page));
+            collection.Write(output, MagickFormat.Tiff);
+        }
+        progress?.Report(1.0);
+    }
+
+    private static byte[] TiffPage(PdfPageImage page, double dpi, ConversionOptions options)
+    {
+        using var image = new MagickImage();
+        image.ReadPixels(page.Bgra, 0, (uint)(page.Width * page.Height * 4),
+            new PixelReadSettings((uint)page.Width, (uint)page.Height, StorageType.Char, PixelMapping.BGRA));
+        image.Alpha(AlphaAction.Off); // the page was drawn on white
+        image.Depth = 8;
+        image.Density = new Density(dpi, DensityUnit.PixelsPerInch);
+        // black text on white paper needs no colour channels
+        if (image.DetermineColorType() is ColorType.Grayscale or ColorType.Bilevel) image.ColorType = ColorType.Grayscale;
+        ImageConversion.ApplyEncoderSettings(image, "tiff", losslessSource: true, options, sizeTargeted: false);
+        return image.ToByteArray(MagickFormat.Tiff);
+    }
+
     /// <summary>How many other processes to share this document's pages among; 0 to draw them in this one.</summary>
     private static int WorkersFor(int pageCount)
     {

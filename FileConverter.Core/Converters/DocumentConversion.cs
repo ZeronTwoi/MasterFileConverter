@@ -47,6 +47,13 @@ public static class DocumentConversion
 
         progress?.Report(0.05);
 
+        if (dst == "tiff" && src == "pdf")
+        {
+            // every page in one file, the way scanned documents are kept
+            await PdfPageExport.ToTiffAsync(input, output, options, progress, ct);
+            return new ConversionResult(output);
+        }
+
         if (dst is "png" or "jpg")
         {
             // one image per page; several pages get a "name pages" folder
@@ -122,6 +129,8 @@ public static class DocumentConversion
                 return await FromSpreadsheetAsync(input, src, output, dst, options, ct);
             case DocumentKind.Slides:
                 return await FromPresentationAsync(input, src, output, dst, options, ct);
+            case DocumentKind.Drawing:
+                return await FromDrawingAsync(input, src, output, dst, ct);
             default:
                 throw Unsupported(src, dst);
         }
@@ -224,6 +233,22 @@ public static class DocumentConversion
             default: throw Unsupported(FormatRegistry.GetExtension(input), dst);
         }
         return output;
+    }
+
+    // ---------- drawings ----------
+
+    /// <summary>
+    /// OpenDocument drawings and Microsoft Publisher files: pages of shapes, text frames and pictures
+    /// laid out freely. Nothing here reads them; LibreOffice does, and draws them into a PDF.
+    /// </summary>
+    private static async Task<string> FromDrawingAsync(string input, string src, string output, string dst, CancellationToken ct)
+    {
+        if (dst != "pdf") throw Unsupported(src, dst);
+        string kind = src == "pub" ? "Publisher files" : "OpenDocument drawings";
+        if (ToolLocator.LibreOfficePath == null)
+            throw new FriendlyException($"Converting {kind} requires LibreOffice (free, libreoffice.org). Install it and try again.");
+        if (await TryLibreOfficeAsync(input, output, "pdf", inputFilter: null, ct)) return output;
+        throw new FriendlyException("LibreOffice could not convert this file: it may be damaged, or of a kind it does not read.");
     }
 
     // ---------- presentations ----------

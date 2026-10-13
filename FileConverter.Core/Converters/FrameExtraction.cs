@@ -37,17 +37,21 @@ public static class FrameExtraction
     // ---------- animated gif/webp → image frames ----------
 
     /// <summary>Writes every frame of an animated image as a numbered still; returns the folder.</summary>
+    /// <param name="pages">
+    /// The pictures are the pages of a TIFF, not the frames of an animation: each is whole as it
+    /// is stored (an animation's frames often hold only what changed), and the folder is "name pages".
+    /// </param>
     public static string AnimatedImageToFrames(string input, string outputFilePath, string src, string dst,
-        ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
+        ConversionOptions options, IProgress<double>? progress, CancellationToken ct, bool pages = false)
     {
         using var frames = new MagickImageCollection(input);
-        frames.Coalesce();
+        if (!pages) frames.Coalesce();
 
-        var folder = CreateOutputFolder(outputFilePath, "frames");
+        var folder = CreateOutputFolder(outputFilePath, pages ? "pages" : "frames");
         try
         {
             var detail = options.Detail;
-            var baseName = Path.GetFileNameWithoutExtension(outputFilePath);
+            var baseName = Path.GetFileNameWithoutExtension(ConversionService.FinalName(outputFilePath));
             int digits = Math.Max(2, frames.Count.ToString().Length);
             // an explicit quality replaces the slider, as it does for single pictures
             bool sized = options.HasSizeTarget && !detail.Has(K.Quality);

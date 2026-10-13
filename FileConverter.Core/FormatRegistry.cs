@@ -23,7 +23,9 @@ public enum DocumentKind
     /// <summary>Tables of cells: Excel, OpenDocument spreadsheets, comma-separated text.</summary>
     Sheet,
     /// <summary>Slides: PowerPoint, OpenDocument presentations.</summary>
-    Slides
+    Slides,
+    /// <summary>Laid-out pages of shapes and text: OpenDocument drawings, Publisher files. Read by LibreOffice alone.</summary>
+    Drawing
 }
 
 /// <summary>
@@ -32,7 +34,7 @@ public enum DocumentKind
 /// </summary>
 public static class FormatRegistry
 {
-    private static readonly string[] ImageInputs = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "ico"];
+    private static readonly string[] ImageInputs = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "ico", "svg"];
     private static readonly string[] ImageOutputs = ["jpg", "png", "gif", "webp", "bmp", "tiff"];
 
     private static readonly string[] AudioInputs = ["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "opus"];
@@ -44,7 +46,8 @@ public static class FormatRegistry
     private static readonly string[] TextDocuments = ["txt", "md", "log", "rtf", "html", "htm", "docx", "doc", "odt", "epub"];
     private static readonly string[] Spreadsheets = ["xlsx", "xls", "ods", "csv"];
     private static readonly string[] Presentations = ["pptx", "ppt", "odp"];
-    private static readonly string[] DocumentInputs = ["pdf", .. TextDocuments, .. Spreadsheets, .. Presentations];
+    private static readonly string[] Drawings = ["odg", "pub"];
+    private static readonly string[] DocumentInputs = ["pdf", .. TextDocuments, .. Spreadsheets, .. Presentations, .. Drawings];
 
     /// <summary>What running text can be written as, the most asked-for first (the first is what a new file is set to).</summary>
     private static readonly string[] TextOutputs = ["pdf", "docx", "odt", "rtf", "txt", "html", "md", "epub", "doc"];
@@ -76,6 +79,7 @@ public static class FormatRegistry
         if (TextDocuments.Contains(ext)) return DocumentKind.Text;
         if (Spreadsheets.Contains(ext)) return DocumentKind.Sheet;
         if (Presentations.Contains(ext)) return DocumentKind.Slides;
+        if (Drawings.Contains(ext)) return DocumentKind.Drawing;
         return DocumentKind.None;
     }
 
@@ -150,6 +154,10 @@ public static class FormatRegistry
                     if (target != ext) yield return target;
                 break;
 
+            case DocumentKind.Drawing:
+                yield return "pdf";
+                break;
+
             case DocumentKind.Sheet:
                 // (the old binary .xls is read, not written)
                 foreach (var target in new[] { "pdf", "xlsx", "ods", "csv", "html" })
@@ -167,9 +175,10 @@ public static class FormatRegistry
                 break;
         }
 
-        // every document's pages as pictures
+        // every document's pages as pictures; a PDF's also as one TIFF of several pages
         yield return "png";
         yield return "jpg";
+        if (ext == "pdf") yield return "tiff";
     }
 
     /// <summary>Which conversion engine handles a given source → target pair.</summary>

@@ -198,10 +198,13 @@ public sealed class Samples : IDisposable
             TestContext.Current.CancellationToken);
     }
 
-    public async Task<string> CombineAsync(IReadOnlyList<string> inputs, string target, params (string Key, string Value)[] settings)
+    public Task<string> CombineAsync(IReadOnlyList<string> inputs, string target, params (string Key, string Value)[] settings) =>
+        CombineAsync(inputs, target, new ConversionOptions { UseGpu = false, Speed = SpeedPreset.Fast }, settings);
+
+    public async Task<string> CombineAsync(IReadOnlyList<string> inputs, string target, ConversionOptions options,
+        params (string Key, string Value)[] settings)
     {
-        var options = new ConversionOptions { UseGpu = false, Speed = SpeedPreset.Fast }.WithDetail(Settings(settings));
-        return (await _service.ConvertManyAsync(inputs, target, options, NewOutputFolder(), null,
+        return (await _service.ConvertManyAsync(inputs, target, options.WithDetail(Settings(settings)), NewOutputFolder(), null,
             TestContext.Current.CancellationToken))!;
     }
 

@@ -56,25 +56,34 @@ public static class ImageConversion
 
         progress?.Report(0.05);
 
+        var src = FormatRegistry.GetExtension(input);
         if (dst == "pdf")
         {
+            if (src == "svg")
+            {
+                // a drawing stays a drawing: lines and letters in the PDF, sharp at any size
+                DrawingPdf.Write(input, output, options);
+                progress?.Report(1.0);
+                return new ConversionResult(output, "vector");
+            }
             // single image → one-page PDF (several images with the same target merge upstream)
             MergeConversion.ImagesToPdf([input], output, options, progress, ct);
             return new ConversionResult(output);
         }
 
-        var src = FormatRegistry.GetExtension(input);
         bool animated = src is "gif" or "webp" && IsAnimated(input);
+        // a TIFF of several pages (a scan, a fax): every page is a picture of its own
+        bool paged = src is "tif" or "tiff" && PageCount(input) > 1;
         bool exact = false;
 
         if (animated && dst is "gif" or "webp")
         {
             exact = ConvertAnimated(input, output, src, dst, targetBytes, options, progress, ct);
         }
-        else if (animated)
+        else if (animated || paged)
         {
-            // animated source → still format: every frame becomes a numbered image
-            var folder = FrameExtraction.AnimatedImageToFrames(input, output, src, dst, options, progress, ct);
+            // animated source → still format: every frame becomes a numbered image; so does every page of a TIFF
+            var folder = FrameExtraction.AnimatedImageToFrames(input, output, src, dst, options, progress, ct, pages: paged);
             progress?.Report(1.0);
             return new ConversionResult(folder);
         }
@@ -103,21 +112,24 @@ public static class ImageConversion
         return options.HasSizeTarget ? (long)(sourceBytes * options.SizePercent / 100.0) : long.MaxValue;
     }
 
-    private static bool IsAnimated(string input)
+    private static bool IsAnimated(string input) => PageCount(input) > 1;
+
+    /// <summary>How many pictures the file holds: the frames of an animation, the pages of a TIFF.</summary>
+    internal static int PageCount(string input)
     {
         try
         {
             // header-only scan: counts the frames without decoding any pixels
-            return MagickImageInfo.ReadCollection(input).Skip(1).Any();
+            return Math.Max(MagickImageInfo.ReadCollection(input).Count(), 1);
         }
         catch
         {
-            return false;
+            return 1;
         }
     }
 
-    /// <summary>Formats that store pixels exactly — re-saving them losslessly is worth it.</summary>
-    internal static bool IsLosslessSource(string src) => src is "png" or "bmp" or "gif" or "tif" or "tiff" or "ico";
+    /// <summary>Formats that store pixels exactly — re-saving them losslessly is worth it. (A drawing has no pixels to lose.)</summary>
+    internal static bool IsLosslessSource(string src) => src is "png" or "bmp" or "gif" or "tif" or "tiff" or "ico" or "svg";
 
     // ---------- still images ----------
 
@@ -167,14 +179,57 @@ public static class ImageConversion
         return false;
     }
 
-    internal static MagickImage LoadStill(string input, string src)
+    /// <param name="frame">Which page of a TIFF of several pages.</param>
+    /// <param name="detail">For a drawing: the resolution to draw it at, when one is set.</param>
+    internal static MagickImage LoadStill(string input, string src, int frame = 0, DetailSettings? detail = null)
     {
+        if (src == "svg") return LoadDrawing(input, detail);
+        if (frame > 0) return new MagickImage(input, new MagickReadSettings { FrameIndex = (uint)frame, FrameCount = 1 });
         if (src != "ico") return new MagickImage(input);
 
         // An .ico holds the same picture at several sizes, smallest usually first — take the best one.
         using var entries = new MagickImageCollection(input);
         var largest = entries.OrderByDescending(e => (long)e.Width * e.Height).ThenByDescending(e => e.Depth).First();
         return (MagickImage)largest.Clone();
+    }
+
+    /// <summary>
+    /// The resolution a drawing (SVG) is turned into pixels at unless one is set: print resolution,
+    /// as for the pages of a PDF. A drawing says its size in units of 1/96 inch, so at 96 it comes
+    /// out as many pixels as it says, and at 300 a little over three times as wide and high.
+    /// </summary>
+    internal const double DrawingDpi = 300;
+
+    /// <summary>The most pixels a drawing is given, whatever resolution was asked for.</summary>
+    private const double MaxDrawingPixels = 100_000_000;
+
+    /// <summary>
+    /// Draws an SVG at the chosen resolution — drawn at that size, not drawn small and enlarged, so
+    /// every line is sharp. What the drawing leaves empty stays transparent.
+    /// </summary>
+    private static MagickImage LoadDrawing(string input, DetailSettings? detail)
+    {
+        double dpi = detail?.Int(K.Dpi, 36, 1200) ?? DrawingDpi;
+        try
+        {
+            // its size as it says it, at 96 to the inch
+            var header = new MagickImageInfo(input, new MagickReadSettings { Format = MagickFormat.Svg });
+            double pixels = (double)header.Width * header.Height * (dpi / 96) * (dpi / 96);
+            if (pixels > MaxDrawingPixels) dpi *= Math.Sqrt(MaxDrawingPixels / pixels);
+        }
+        catch (MagickException)
+        {
+            // the drawing itself says what is wrong with the file
+        }
+
+        var image = new MagickImage(input, new MagickReadSettings
+        {
+            Format = MagickFormat.Svg,
+            Density = new Density(dpi),
+            BackgroundColor = MagickColors.Transparent
+        });
+        image.Density = new Density(dpi, DensityUnit.PixelsPerInch);
+        return image;
     }
 
     /// <summary>
@@ -197,7 +252,7 @@ public static class ImageConversion
             goal = smaller.Goal;
             return image;
         }
-        return LoadStill(input, src);
+        return LoadStill(input, src, detail: detail);
     }
 
     /// <summary>
