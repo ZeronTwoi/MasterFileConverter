@@ -47,6 +47,12 @@ public static class DocumentConversion
 
         progress?.Report(0.05);
 
+        if (dst == "svg" && src == "pdf")
+        {
+            // a page a drawing: shapes as shapes, letters as their outlines
+            return new ConversionResult(await Pdf.PdfVectorExport.ExportAsync(input, output, options, progress, ct), "vector");
+        }
+
         if (dst == "tiff" && src == "pdf")
         {
             // every page in one file, the way scanned documents are kept

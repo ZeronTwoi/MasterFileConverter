@@ -137,6 +137,14 @@ public static class SettingCatalog
         {
             SlidesFromPdf(list);
         }
+        else if (target == "svg" && sourceExtension == "pdf")
+        {
+            list.Add(new(K.Pages, "Pages", SettingKind.Text)
+            {
+                Group = "Pages", Automatic = "All pages",
+                Help = "Which pages to turn into drawings, for example 1-3, 7, 10- (page 10 to the end). Every page becomes a file of its own."
+            });
+        }
         else if (target is "xlsx" or "ods" or "csv")
         {
             if (sourceExtension == "pdf") TablesFromPdf(list, target);

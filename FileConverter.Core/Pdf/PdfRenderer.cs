@@ -34,20 +34,40 @@ public sealed class PdfPageImage(int width, int height, byte[] bgra) : IDisposab
 /// </summary>
 public sealed unsafe class PdfRenderer : IDisposable
 {
-    private static readonly object Engine = new();
+    /// <summary>Held around every call into PDFium, by whoever makes one.</summary>
+    internal static readonly object Engine = new();
     private static bool _initialized;
 
     private readonly MemoryMappedFile? _map;
     private readonly MemoryMappedViewAccessor? _view;
+    private readonly long _length;
     private byte* _data;
     private IntPtr _document;
 
     public int PageCount { get; }
 
+    /// <summary>PDFium's handle of the open document, for the calls this class does not wrap (under <see cref="Engine"/>).</summary>
+    internal IntPtr Handle => _document;
+
+    /// <summary>
+    /// Opens the same file a second time, as a document of its own: one whose pages can be taken
+    /// apart without the first one noticing. The caller closes it, and before this renderer is disposed.
+    /// </summary>
+    internal IntPtr OpenAgain()
+    {
+        lock (Engine) return Native.FPDF_LoadMemDocument64(_data, (nuint)_length, null);
+    }
+
+    internal static void Close(IntPtr document)
+    {
+        if (document == IntPtr.Zero) return;
+        lock (Engine) Native.FPDF_CloseDocument(document);
+    }
+
     /// <summary>Opens a PDF. Throws <see cref="FriendlyException"/> when it can't be read.</summary>
     public PdfRenderer(string path)
     {
-        long length = new FileInfo(path).Length;
+        long length = _length = new FileInfo(path).Length;
         if (length == 0) throw new FriendlyException("The PDF file is empty.");
 
         // The file is mapped rather than read: PDFium needs the bytes for as long as the document

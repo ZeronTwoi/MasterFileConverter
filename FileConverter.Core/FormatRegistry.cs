@@ -175,10 +175,14 @@ public static class FormatRegistry
                 break;
         }
 
-        // every document's pages as pictures; a PDF's also as one TIFF of several pages
+        // every document's pages as pictures; a PDF's also as one TIFF of several pages, or as drawings again
         yield return "png";
         yield return "jpg";
-        if (ext == "pdf") yield return "tiff";
+        if (ext == "pdf")
+        {
+            yield return "tiff";
+            yield return "svg";
+        }
     }
 
     /// <summary>Which conversion engine handles a given source → target pair.</summary>
