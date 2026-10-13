@@ -236,7 +236,8 @@ the target of every compatible file at once.
 - **File size slider** — target output size as a % of the original. Drives bitrate
   targeting for audio/video (two-pass encoding on slower speed presets), a search for the
   highest quality that fits for images, and compression levels for archives.
-- Dark by default; the ··· menu at the bottom right switches to a light theme or to following the system, and opens the settings folder.
+- Dark by default; the ··· menu at the bottom right switches to a light theme or to following
+  the system, and opens the settings folder, the licences and the app's page with its source.
 - **New versions, if you want to hear of them.** The first start asks once whether the app
   should tell you when a new version is out. With *No* it never asks again and never connects
   by itself. With *Yes* it looks once at each start, and a newer version shows as a warning sign
@@ -410,6 +411,50 @@ says which file is for which system, what is new (that version's part of `CHANGE
 files' SHA-256 checksums.
 
 ## What has been checked
+
+Version 2.4.0 made updating one click, uninstalling complete, and closing the window final.
+
+On Windows 11 this was gone through with **a trial copy** — the same source built under another
+name and AppId (see [Building](#building)), in two versions, with a stand-in for GitHub's list
+of releases served from the same machine — because the test machine has the real app installed
+for use, which was not to be touched:
+
+- **Installed** through the installer's pages, each looked at in dark mode (where the app's
+  logo now shows; before, Inno Setup's stock picture did): the program folder, the four
+  shortcuts and entries chosen, "Installed apps" with name, version and publisher.
+- **Updated from the window:** one click on the warning sign — the download, its checksum, the
+  installer's progress window, and the app was back as the new version, saying so: 20 to 30
+  seconds from click to window.
+- **Updated from the command line** (`--update`): refused while the app's window was open;
+  after closing it, the new version was in place half a minute later and the app not started.
+  With a second installer window of the same app left open, the update could not run — which
+  is why the app now says at its next start when an update did not go through.
+- **An unpacked folder** updated by `--update` in 9 seconds: a file only the old version had
+  was gone, a file of the user's own beside the app untouched, nothing of the swap left.
+- **Uninstalled with the app still open:** the uninstaller asked for it to be closed, then
+  whether to keep the settings; with *Keep my settings*, `settings.json` stayed and nothing
+  else. **Uninstalled without questions:** nothing left — the program folder, the shortcuts,
+  a taskbar pin, the three registry entries, the data folder, a work folder and a work file
+  put into the temp folder for the purpose; and a setting of Word's, left changed on purpose
+  the way a crash of the app would leave it, was put back.
+- **The window closed on a running conversion** (a four-minute video to WebM): the question
+  came up; *Keep converting* kept it going; *Stop and close* ended the app in a third of a
+  second, with no encoder running afterwards, the half-written file gone and nothing left in
+  the temp folder. The same done to version 2.3.0 — which closed without asking — left the
+  encoder running and the half-written file where it was.
+
+On GitHub's machines (Windows Server and Ubuntu), for every push, with the very downloads built
+there: the test suite, the download's `--self-test`, an unpacked folder updated in place, and
+the app installed, updated, uninstalled keeping the settings, installed again and uninstalled
+altogether, with a check after each that exactly what should be left is left. That is where the
+Linux side of all this has run — the script, the command, the menu entry renewed by an update;
+no window on a desktop there.
+
+Not checked: an update from one released version to the next. 2.4.0 is the first version that
+can update itself, so the release after it will be the first real one; what was tried is the
+same code against the stand-in list. And an update while Windows' SmartScreen or a virus
+scanner objects to an unsigned installer started by another program — none did on the test
+machine.
 
 Version 2.3.0 added the notice of new versions and gave the Windows installer its pages. For it,
 on Windows 11:

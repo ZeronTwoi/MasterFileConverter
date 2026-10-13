@@ -306,12 +306,12 @@ public static class AppUpdater
         try
         {
             var staged = FolderOfThisCopy(platform.LauncherName)
-                ?? throw new FriendlyException("the new version was not unpacked the way it should be.");
+                ?? throw new FriendlyException("The new version was not unpacked the way it should be.");
             // only ever over a copy of the app, wherever the folder named may point
             if (!File.Exists(launcher) || !Directory.Exists(Path.Combine(target, "app")))
-                throw new FriendlyException("there is no copy of the app in " + target + ".");
+                throw new FriendlyException("There is no copy of the app in " + target + ".");
             if (!WaitForExit(oldProcess, TimeSpan.FromSeconds(60)))
-                throw new FriendlyException("the app did not close.");
+                throw new FriendlyException("The app did not close, so its files could not be replaced. The version you had is still in place.");
 
             Directory.CreateDirectory(WorkFolder);
             using (Retry(() => new FileStream(LockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)))
@@ -326,7 +326,13 @@ public static class AppUpdater
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(FailureNote)!);
-                File.WriteAllText(FailureNote, ex is FriendlyException or IOException or UnauthorizedAccessException ? ex.Message : ex.ToString());
+                File.WriteAllText(FailureNote, ex switch
+                {
+                    FriendlyException => ex.Message,
+                    IOException or UnauthorizedAccessException =>
+                        $"The app's files could not be replaced: {ex.Message} The version you had is still in place.",
+                    _ => ex.ToString()
+                });
             }
             catch
             {
