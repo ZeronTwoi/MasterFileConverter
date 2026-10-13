@@ -1,0 +1,652 @@
+using System.Diagnostics;
+using System.IO.Compression;
+using FileConverter.Core.Converters;
+using ImageMagick;
+using ImageMagick.Drawing;
+using QuestPDF.Fluent;
+using SharpCompress.Archives;
+
+namespace FileConverter.Core.Diagnostics;
+
+public enum SelfTestOutcome
+{
+    Passed,
+    Failed,
+    Skipped
+}
+
+public sealed record SelfTestResult(string Name, SelfTestOutcome Outcome, string Detail, TimeSpan Elapsed);
+
+/// <summary>
+/// Checks that every conversion the app offers actually works on this machine: makes one small
+/// sample per input format, converts it to every target the format registry lists, and inspects
+/// each result (an image must decode, a video must still have its video track and length, a PDF
+/// must keep its text, an archive must contain the original files, …).
+///
+/// A conversion that needs something this machine doesn't have — FFmpeg, an office program, the
+/// RAR encoder — is reported as skipped with the reason, not as a failure.
+/// </summary>
+public static class SelfTest
+{
+    private const string Marker = "Merhaba";
+    private const string SampleText = "Merhaba dünya — çğıöşü ÇĞİÖŞÜ.\nThe quick brown fox jumps over the lazy dog.\n";
+    private const double ClipSeconds = 2.0;
+
+    /// <summary>
+    /// Runs the whole matrix inside <paramref name="workDirectory"/> (created, and emptied first).
+    /// <paramref name="filter"/> limits it to cases whose name contains the text, e.g. "mp4" or "→ pdf".
+    /// </summary>
+    public static async Task<IReadOnlyList<SelfTestResult>> RunAsync(string workDirectory, string? filter,
+        Action<SelfTestResult>? report, CancellationToken ct)
+    {
+        if (Directory.Exists(workDirectory)) Directory.Delete(workDirectory, recursive: true);
+        var samplesDir = Path.Combine(workDirectory, "samples");
+        var outputDir = Path.Combine(workDirectory, "out");
+        Directory.CreateDirectory(samplesDir);
+        Directory.CreateDirectory(outputDir);
+
+        var samples = await CreateSamplesAsync(samplesDir, ct);
+        var service = new ConversionService();
+        var options = new ConversionOptions { Speed = SpeedPreset.Fast };
+        bool rar = ToolLocator.RarPath != null;
+
+        var results = new List<SelfTestResult>();
+        void Add(SelfTestResult result)
+        {
+            lock (results) results.Add(result);
+            report?.Invoke(result);
+        }
+
+        bool Wanted(string name) => filter == null || name.Contains(filter, StringComparison.OrdinalIgnoreCase);
+
+        var jobs = new List<Task>();
+        foreach (var sample in samples)
+        {
+            var sourceExt = FormatRegistry.GetExtension(sample.Path ?? "x." + sample.Extension);
+            foreach (var target in FormatRegistry.GetTargets(sourceExt, rar))
+            {
+                var name = $"{sample.Label} → {target}";
+                if (!Wanted(name)) continue;
+
+                if (sample.Path == null)
+                {
+                    Add(new SelfTestResult(name, SelfTestOutcome.Skipped, sample.Missing ?? "no sample", TimeSpan.Zero));
+                    continue;
+                }
+                if (MissingEngine(sourceExt, target) is { } reason)
+                {
+                    Add(new SelfTestResult(name, SelfTestOutcome.Skipped, reason, TimeSpan.Zero));
+                    continue;
+                }
+
+                jobs.Add(Task.Run(async () =>
+                {
+                    var watch = Stopwatch.StartNew();
+                    try
+                    {
+                        var dir = Path.Combine(outputDir, Path.GetFileName(sample.Path));
+                        Directory.CreateDirectory(dir);
+                        var output = ConversionService.BuildOutputPath(sample.Path, target, dir);
+                        var result = await service.ConvertAsync(sample.Path, output, options, null, ct);
+                        var detail = await VerifyAsync(sample, target, result.OutputPath, ct);
+                        if (result.Note != null) detail += $" · {result.Note}";
+                        Add(new SelfTestResult(name, SelfTestOutcome.Passed, detail, watch.Elapsed));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Add(new SelfTestResult(name, SelfTestOutcome.Failed, Shorten(ex.Message), watch.Elapsed));
+                    }
+                }, ct));
+            }
+        }
+
+        // several files → one file
+        var stills = samples.Where(s => s.Label is "png" or "jpg" or "bmp" && s.Path != null).Select(s => s.Path!).ToList();
+        if (stills.Count == 3)
+        {
+            foreach (var target in new[] { "pdf", "gif", "tiff", "zip", "7z", "tar" })
+            {
+                var name = $"3 images → one {target}";
+                if (!Wanted(name)) continue;
+                if (MissingEngine("png", target) is { } reason)
+                {
+                    Add(new SelfTestResult(name, SelfTestOutcome.Skipped, reason, TimeSpan.Zero));
+                    continue;
+                }
+
+                jobs.Add(Task.Run(async () =>
+                {
+                    var watch = Stopwatch.StartNew();
+                    try
+                    {
+                        var dir = Path.Combine(outputDir, "merge-" + target);
+                        Directory.CreateDirectory(dir);
+                        var produced = await service.ConvertManyAsync(stills, target, options, dir, null, ct);
+                        Add(new SelfTestResult(name, SelfTestOutcome.Passed, VerifyMerged(produced!, target, stills.Count), watch.Elapsed));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        Add(new SelfTestResult(name, SelfTestOutcome.Failed, Shorten(ex.Message), watch.Elapsed));
+                    }
+                }, ct));
+            }
+        }
+
+        await Task.WhenAll(jobs);
+        return results.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
+    }
+
+    private static string Shorten(string message)
+    {
+        message = message.ReplaceLineEndings(" ").Trim();
+        return message.Length > 300 ? message[..300] + "…" : message;
+    }
+
+    /// <summary>Why this conversion can't run here, or null when everything it needs is present.</summary>
+    private static string? MissingEngine(string sourceExt, string target)
+    {
+        var engine = FormatRegistry.GetEngine(sourceExt, target);
+        if (engine == FileCategory.Video && (ToolLocator.FfmpegPath == null || ToolLocator.FfprobePath == null))
+            return "FFmpeg is not installed";
+        if (target == "7z" && ToolLocator.SevenZipPath == null)
+            return "7-Zip is not installed";
+        if (sourceExt == "7z" && ToolLocator.SevenZipPath == null)
+            return "7-Zip is not installed";
+        if (sourceExt == "doc" && ToolLocator.LibreOfficePath == null && !ToolLocator.OfficeAutomationAvailable)
+            return "no office program (Word or LibreOffice) is installed";
+        return null;
+    }
+
+    // ---------- samples ----------
+
+    /// <param name="Label">How the sample is named in results ("png", "gif (animated)").</param>
+    /// <param name="Path">The file, or null when it could not be made here.</param>
+    /// <param name="Missing">Why it could not be made.</param>
+    private sealed record Sample(string Label, string Extension, string? Path, string? Missing = null)
+    {
+        public bool Animated => Label.Contains("animated");
+        public int Frames { get; init; } = 1;
+        public IReadOnlyList<string> Contents { get; init; } = [];
+    }
+
+    private static async Task<List<Sample>> CreateSamplesAsync(string dir, CancellationToken ct)
+    {
+        var samples = new List<Sample>();
+        samples.AddRange(CreateImageSamples(dir));
+        samples.AddRange(await CreateMediaSamplesAsync(dir, ct));
+        samples.AddRange(await CreateDocumentSamplesAsync(dir, ct));
+        samples.AddRange(await CreateArchiveSamplesAsync(dir, ct));
+        return samples;
+    }
+
+    private static MagickImage Picture(int shift = 0)
+    {
+        var image = new MagickImage("gradient:#2f6fd0-#f2c14e", new MagickReadSettings { Width = 320, Height = 240 });
+        new Drawables()
+            .FillColor(new MagickColor("#d0443c")).Rectangle(30 + shift, 40, 130 + shift, 130)
+            .FillColor(new MagickColor("#3fb68b")).Ellipse(220, 150, 60, 45, 0, 360)
+            .Draw(image);
+        return image;
+    }
+
+    /// <summary>
+    /// A 64×48 HEIC picture. Nothing the app carries can write the format (it only reads it), so
+    /// this one sample is kept ready-made; it was encoded once with Windows' own HEIF encoder.
+    /// </summary>
+    private const string HeicPicture =
+        "AAAAIGZ0eXBoZWljAAAAAG1pZjFoZWljbWlhZk1pSEIAAAE9bWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAAAA" +
+        "AAAOcGl0bQAAAAAAAQAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGh2YzEAAAAAHmlsb2MAAAAARAAAAQABAAAAAQAAAaUAAANr" +
+        "AAAAwWlwcnAAAACjaXBjbwAAABRpc3BlAAAAAAAAAEAAAAAwAAAAd2h2Y0MBAUAAAACwAAAAAAAD8AD8/fj4AQALA6AAAQAYQAEMAf//" +
+        "AUAAAAMAsAAAAwAAAwADKgJAoQABACpCAQEBQAAAAwCwAAADAAADAAOgIIMXKk7cuTcBDQIEAAADAZAAAAMBkCCiAAEAB0QBwHGAmyAA" +
+        "AAAQcGl4aQAAAAADCAgIAAAAFmlwbWEAAAAAAAAAAQABAwGCAwAAAEBmcmVlAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANzbWRhdAAAA2coAa8LwOSXwBdnBB2JrmU4iIbkoML9Rlkq6nFFlwUSUmxl15Rq8poVxV8Z" +
+        "EQFnN45FHZ0m7FFTZ9eat1WoHG3YNuLgHmJWI5S2tI/hCadKaxRxC4Qpb6eQPLxsNwfOpJfPbQ2KU/qxzM0M9ehP1Ymo3J7TRvn0nriu" +
+        "WcX3SpGRGCycD3nyT5JISJLIviQV9YN7CSlR49RmwtM+eh9TTEfEfpeX9ljgj1C1LBPxanWkebHBuLYsrrCCVlEznYpRk7RTYE8EUbF6" +
+        "JwfRgHWjFqelLbd0KjGth5gtLmitWK5jnxo5EwKgv66AoxBfSnoqsVuwBQNTX/mAu/4Hep6s3pjwpUwbOxNLs4OZOsHf4h4yFtnyRaVH" +
+        "Cvet9KXe+GOMZPYdfjtv4R7dgbdka8Z2KxcS0N1x08xVFsjxGJrS4xyBay4MAoy9epVWDCPMzwpKsrTBMUluv2Dw00uE/frXQMvdjd+8" +
+        "iaX4e/899XMPZceyB3FSEJkNAWVd5c5xXHwnDWq8+CxxVSINjapEa8JA9N5f9yJVqVVc3cN9HrSE/4ZP4Xgf5QLZV9o/kh6bVC2J0fWI" +
+        "Yj7w11+Df3KOAAP4R35Jzyo+m66uxsdebN2EmOP6aft4yYc09RA+320EoSSVpl8soPvPSFZa3lwDiUeVf164UJUYgEZ4gDHQKZiUAP30" +
+        "/qKvYrfa//E7629CJnoyvOdHpJi0v6FN4X5YDweuxf8ggwisfYHM9fFxEWf9HHtphd+49GI/nDa2CCgp+Dsl6BiXrNssYwbwPXabxuGO" +
+        "lnYtN1gh3wclyVnU4crXb97wH/xoUyhvZID0b1oX2iOkQfuOBsZeKWDCU7CQ+UKfEI/KuVvSmsi6d90IstzLdTZe46G1yqMZUTOLjXQn" +
+        "rlst+iHN5L/W+WKJFsWVYXjAnTY0MXhA7uDuJZ7mHde1WZ7ITzXiRJJS2UjuoY7SdALJR/QmYpNszZaVwTmB23/bdMmHqajOaG5Zj6//" +
+        "fQs8HPBZlybtp7FgVaapJ1ki1P/I85Y+Jzv6LdT6f7h1fFzwdnI4AisDxf/tf8En1waZ7nq6G8MQMPWOer9rJ+aOnfuz0vsJZdp5iqWC" +
+        "CP99YBM9bsVFrj0kTT7UuAXIhvx5FLZWvGAd7PAmdTQcmnOikQ8xUUEAcfsLq2ew";
+
+    private static IEnumerable<Sample> CreateImageSamples(string dir)
+    {
+        Sample ReadyMade(string ext, string base64)
+        {
+            var path = Path.Combine(dir, $"photo.{ext}");
+            File.WriteAllBytes(path, Convert.FromBase64String(base64));
+            return new Sample(ext, ext, path);
+        }
+
+        Sample Still(string ext, MagickFormat format, Action<MagickImage>? prepare = null)
+        {
+            var path = Path.Combine(dir, $"photo.{ext}");
+            try
+            {
+                using var image = Picture();
+                prepare?.Invoke(image);
+                image.Write(path, format);
+                return new Sample(ext, ext, path);
+            }
+            catch (Exception ex)
+            {
+                return new Sample(ext, ext, null, $"this build can't write a .{ext} sample ({Shorten(ex.Message)})");
+            }
+        }
+
+        // the png carries transparency, so the "flatten onto white" path is exercised too
+        yield return Still("png", MagickFormat.Png, image =>
+        {
+            image.Alpha(AlphaAction.Set);
+            new Drawables().FillColor(MagickColors.Transparent).Rectangle(250, 10, 310, 60).Draw(image);
+        });
+        yield return Still("jpg", MagickFormat.Jpeg);
+        yield return Still("webp", MagickFormat.WebP);
+        yield return Still("bmp", MagickFormat.Bmp);
+        yield return Still("tiff", MagickFormat.Tiff);
+        yield return Still("gif", MagickFormat.Gif);
+        yield return ReadyMade("heic", HeicPicture);
+
+        Sample ico;
+        try
+        {
+            var path = Path.Combine(dir, "icon.ico");
+            using var sizes = new MagickImageCollection();
+            foreach (uint size in new uint[] { 16, 48, 128 })
+            {
+                var entry = Picture();
+                entry.Resize(new MagickGeometry(size, size) { IgnoreAspectRatio = true });
+                sizes.Add(entry);
+            }
+            sizes.Write(path, MagickFormat.Ico);
+            ico = new Sample("ico", "ico", path);
+        }
+        catch (Exception ex)
+        {
+            ico = new Sample("ico", "ico", null, Shorten(ex.Message));
+        }
+        yield return ico;
+
+        foreach (var (ext, format) in new[] { ("gif", MagickFormat.Gif), ("webp", MagickFormat.WebP) })
+        {
+            Sample animated;
+            try
+            {
+                var path = Path.Combine(dir, $"animation.{ext}");
+                using var frames = new MagickImageCollection();
+                for (int i = 0; i < 5; i++)
+                {
+                    var frame = Picture(shift: i * 25);
+                    frame.AnimationDelay = 10;
+                    frames.Add(frame);
+                }
+                frames.Write(path, format);
+                animated = new Sample($"{ext} (animated)", ext, path) { Frames = 5 };
+            }
+            catch (Exception ex)
+            {
+                animated = new Sample($"{ext} (animated)", ext, null, Shorten(ex.Message));
+            }
+            yield return animated;
+        }
+    }
+
+    private static async Task<List<Sample>> CreateMediaSamplesAsync(string dir, CancellationToken ct)
+    {
+        var samples = new List<Sample>();
+        string[] audioFormats = ["wav", "mp3", "flac", "aac", "ogg", "m4a", "wma", "opus"];
+        string[] videoFormats = ["mp4", "mkv", "avi", "webm", "mov", "wmv", "flv", "ts", "m4v"];
+
+        if (ToolLocator.FfmpegPath == null)
+        {
+            samples.AddRange(audioFormats.Concat(videoFormats).Select(f => new Sample(f, f, null, "FFmpeg is not installed")));
+            return samples;
+        }
+
+        string tone = $"sine=frequency=440:duration={ClipSeconds}";
+        string picture = $"testsrc2=size=320x240:rate=25:duration={ClipSeconds}";
+
+        async Task Make(string ext, params string[] args)
+        {
+            var path = Path.Combine(dir, $"clip.{ext}");
+            var (ok, error, _) = await FfmpegRunner.TryRunAsync([.. args, path], TimeSpan.FromSeconds(120), ct);
+            samples.Add(ok && File.Exists(path)
+                ? new Sample(ext, ext, path)
+                : new Sample(ext, ext, null, $"this FFmpeg can't write a .{ext} sample ({Shorten(error)})"));
+        }
+
+        string[] audioIn = ["-f", "lavfi", "-i", tone, "-ac", "2"];
+        await Make("wav", [.. audioIn, "-c:a", "pcm_s16le"]);
+        await Make("mp3", [.. audioIn, "-c:a", "libmp3lame", "-b:a", "128k"]);
+        await Make("flac", [.. audioIn, "-c:a", "flac"]);
+        await Make("aac", [.. audioIn, "-c:a", "aac", "-b:a", "128k"]);
+        await Make("ogg", [.. audioIn, "-c:a", "libvorbis"]);
+        await Make("m4a", [.. audioIn, "-c:a", "aac", "-b:a", "128k"]);
+        await Make("wma", [.. audioIn, "-c:a", "wmav2", "-b:a", "128k"]);
+        await Make("opus", [.. audioIn, "-ar", "48000", "-c:a", "libopus"]);
+
+        string[] videoIn = ["-f", "lavfi", "-i", picture, "-f", "lavfi", "-i", tone, "-shortest", "-pix_fmt", "yuv420p"];
+        string[] h264 = ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-b:a", "96k"];
+        await Make("mp4", [.. videoIn, .. h264]);
+        await Make("mkv", [.. videoIn, .. h264]);
+        await Make("mov", [.. videoIn, .. h264]);
+        await Make("m4v", [.. videoIn, .. h264]);
+        await Make("avi", [.. videoIn, "-c:v", "mpeg4", "-q:v", "4", "-c:a", "libmp3lame", "-b:a", "128k"]);
+        await Make("webm", [.. videoIn, "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-crf", "30", "-b:v", "0",
+            "-ar", "48000", "-c:a", "libopus"]);
+        await Make("wmv", [.. videoIn, "-c:v", "wmv2", "-q:v", "4", "-c:a", "wmav2", "-b:a", "128k"]);
+        await Make("flv", [.. videoIn, "-c:v", "flv", "-q:v", "4", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k"]);
+        await Make("ts", [.. videoIn, "-c:v", "mpeg2video", "-q:v", "4", "-c:a", "mp2", "-b:a", "128k"]);
+
+        // keep the registry's order: audio formats first, then video
+        return samples;
+    }
+
+    private static async Task<List<Sample>> CreateDocumentSamplesAsync(string dir, CancellationToken ct)
+    {
+        var samples = new List<Sample>();
+        foreach (var ext in new[] { "txt", "md", "log" })
+        {
+            var path = Path.Combine(dir, $"notes.{ext}");
+            await File.WriteAllTextAsync(path, (ext == "md" ? "# Notes\n\n" : "") + SampleText, new System.Text.UTF8Encoding(false), ct);
+            samples.Add(new Sample(ext, ext, path));
+        }
+
+        var docx = Path.Combine(dir, "letter.docx");
+        using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(docx,
+                   DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var main = doc.AddMainDocumentPart();
+            var body = new DocumentFormat.OpenXml.Wordprocessing.Body();
+            foreach (var line in SampleText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                body.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph(
+                    new DocumentFormat.OpenXml.Wordprocessing.Run(new DocumentFormat.OpenXml.Wordprocessing.Text(line))));
+            main.Document = new DocumentFormat.OpenXml.Wordprocessing.Document(body);
+            main.Document.Save();
+        }
+        samples.Add(new Sample("docx", "docx", docx));
+
+        // five pages: enough for the page pictures to be shared out among worker processes
+        const int pdfPages = 5;
+        var pdf = Path.Combine(dir, "report.pdf");
+        QuestPDF.Fluent.Document.Create(container =>
+        {
+            for (int pageNumber = 1; pageNumber <= pdfPages; pageNumber++)
+            {
+                int number = pageNumber;
+                container.Page(page =>
+                {
+                    page.Size(QuestPDF.Helpers.PageSizes.A5);
+                    page.Margin(36);
+                    page.Content().Text($"{Marker} — page {number}. The quick brown fox jumps over the lazy dog.");
+                });
+            }
+        }).GeneratePdf(pdf);
+        samples.Add(new Sample("pdf", "pdf", pdf) { Frames = pdfPages });
+
+        // a legacy binary .doc can only be written by an office program
+        var docSample = new Sample("doc", "doc", null, "no office program (Word or LibreOffice) to make a .doc sample");
+        if (ToolLocator.LibreOfficePath != null || ToolLocator.OfficeAutomationAvailable)
+        {
+            try
+            {
+                var docPath = Path.Combine(dir, "letter.doc");
+                await DocumentConversion.ConvertAsync(docx, docPath, new ConversionOptions(), null, ct);
+                if (File.Exists(docPath) && IsOleDocument(docPath)) docSample = new Sample("doc", "doc", docPath);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                docSample = docSample with { Missing = Shorten(ex.Message) };
+            }
+        }
+        samples.Add(docSample);
+        return samples;
+    }
+
+    private static bool IsOleDocument(string path)
+    {
+        using var stream = File.OpenRead(path);
+        Span<byte> head = stackalloc byte[4];
+        return stream.Read(head) == 4 && head[0] == 0xD0 && head[1] == 0xCF && head[2] == 0x11 && head[3] == 0xE0;
+    }
+
+    private static readonly string[] ArchiveContents = ["a.txt", "sub/b.txt", "picture.png"];
+
+    private static async Task<List<Sample>> CreateArchiveSamplesAsync(string dir, CancellationToken ct)
+    {
+        var samples = new List<Sample>();
+        var content = Path.Combine(dir, "archive-content");
+        Directory.CreateDirectory(Path.Combine(content, "sub"));
+        await File.WriteAllTextAsync(Path.Combine(content, "a.txt"), SampleText, ct);
+        await File.WriteAllTextAsync(Path.Combine(content, "sub", "b.txt"), "second file\n", ct);
+        using (var image = Picture()) image.Write(Path.Combine(content, "picture.png"), MagickFormat.Png);
+
+        var zip = Path.Combine(dir, "bundle.zip");
+        ZipFile.CreateFromDirectory(content, zip);
+        samples.Add(new Sample("zip", "zip", zip) { Contents = ArchiveContents });
+
+        var tar = Path.Combine(dir, "bundle.tar");
+        await using (var stream = File.Create(tar))
+            await System.Formats.Tar.TarFile.CreateFromDirectoryAsync(content, stream, includeBaseDirectory: false, ct);
+        samples.Add(new Sample("tar", "tar", tar) { Contents = ArchiveContents });
+
+        // a compressed tar under both of its usual names, and a single compressed file
+        foreach (var (label, fileName) in new[] { ("gz (tar.gz)", "bundle.tar.gz"), ("tgz", "bundle.tgz") })
+        {
+            var path = Path.Combine(dir, fileName);
+            await using (var source = File.OpenRead(tar))
+            await using (var target = new GZipStream(File.Create(path), CompressionLevel.Fastest))
+                await source.CopyToAsync(target, ct);
+            samples.Add(new Sample(label, FormatRegistry.GetExtension(path), path) { Contents = ArchiveContents });
+        }
+
+        var gz = Path.Combine(dir, "a.txt.gz");
+        await using (var source = File.OpenRead(Path.Combine(content, "a.txt")))
+        await using (var target = new GZipStream(File.Create(gz), CompressionLevel.Fastest))
+            await source.CopyToAsync(target, ct);
+        samples.Add(new Sample("gz (single file)", "gz", gz) { Contents = ["a.txt"] });
+
+        var bz2 = Path.Combine(dir, "bundle.tar.bz2");
+        await using (var source = File.OpenRead(tar))
+        await using (var target = new SharpCompress.Compressors.BZip2.BZip2Stream(File.Create(bz2),
+                         SharpCompress.Compressors.CompressionMode.Compress, false))
+            await source.CopyToAsync(target, ct);
+        samples.Add(new Sample("bz2 (tar.bz2)", "bz2", bz2) { Contents = ArchiveContents });
+
+        samples.Add(await ExternalArchiveAsync("7z", ToolLocator.SevenZipPath, ["a", "-t7z", "-y", "-bd"], content, dir,
+            "7-Zip is not installed", ct));
+        samples.Add(await ExternalArchiveAsync("rar", ToolLocator.RarPath, ["a", "-r", "-y"], content, dir,
+            "no RAR encoder to make a .rar sample (reading .rar needs none)", ct));
+        return samples;
+    }
+
+    private static async Task<Sample> ExternalArchiveAsync(string ext, string? tool, string[] arguments, string content,
+        string dir, string missing, CancellationToken ct)
+    {
+        if (tool == null) return new Sample(ext, ext, null, missing);
+
+        var path = Path.Combine(dir, $"bundle.{ext}");
+        var psi = new ProcessStartInfo(tool)
+        {
+            WorkingDirectory = content,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var arg in arguments) psi.ArgumentList.Add(arg);
+        psi.ArgumentList.Add(path);
+        psi.ArgumentList.Add("*");
+
+        using var process = Process.Start(psi)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(ct);
+        var stderr = process.StandardError.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct);
+        await Task.WhenAll(stdout, stderr);
+        return process.ExitCode == 0 && File.Exists(path)
+            ? new Sample(ext, ext, path) { Contents = ArchiveContents }
+            : new Sample(ext, ext, null, $"could not make a .{ext} sample ({Shorten(await stderr)})");
+    }
+
+    // ---------- checking results ----------
+
+    private static async Task<string> VerifyAsync(Sample sample, string target, string produced, CancellationToken ct)
+    {
+        var sourceCategory = FormatRegistry.GetCategory(sample.Extension);
+
+        if (Directory.Exists(produced))
+        {
+            var files = Directory.GetFiles(produced, "*." + target);
+            if (files.Length == 0) throw new InvalidOperationException("the output folder is empty");
+            foreach (var file in files) CheckImage(file);
+
+            if (sample.Animated && files.Length != sample.Frames)
+                throw new InvalidOperationException($"expected {sample.Frames} frames, got {files.Length}");
+            if (sample.Extension == "pdf" && files.Length != sample.Frames)
+                throw new InvalidOperationException($"expected {sample.Frames} pages, got {files.Length}");
+            return $"{files.Length} files";
+        }
+
+        var size = new FileInfo(produced).Length;
+        if (size == 0) throw new InvalidOperationException("the output file is empty");
+        var detail = Size(size);
+
+        switch (target)
+        {
+            case "zip" or "7z" or "tar" or "rar":
+                var expected = sourceCategory == FileCategory.Archive ? sample.Contents : [Path.GetFileName(sample.Path!)];
+                CheckArchive(produced, expected);
+                break;
+
+            case "jpg" or "png" or "webp" or "bmp" or "tiff" or "gif" when sourceCategory != FileCategory.Video || target == "gif":
+                var (width, _) = CheckImage(produced);
+                if (target is "gif" or "webp" && sample.Animated && FrameCount(produced) != sample.Frames)
+                    throw new InvalidOperationException("the animation lost frames");
+                detail += $" · {width} px wide";
+                break;
+
+            case "mp3" or "wav" or "flac" or "aac" or "m4a" or "ogg" or "opus":
+            {
+                var info = await FfmpegRunner.ProbeAsync(produced, ct);
+                if (!info.HasAudio) throw new InvalidOperationException("the output has no audio");
+                CheckDuration(info.DurationSeconds);
+                break;
+            }
+
+            case "mp4" or "mkv" or "avi" or "webm" or "mov":
+            {
+                var info = await FfmpegRunner.ProbeAsync(produced, ct);
+                if (!info.HasVideo) throw new InvalidOperationException("the output has no video");
+                if (sourceCategory == FileCategory.Video && !info.HasAudio)
+                    throw new InvalidOperationException("the output lost its audio track");
+                // a picture source plays for its frames (10 per second in the samples), a clip for its length
+                CheckDuration(info.DurationSeconds, sourceCategory == FileCategory.Image ? sample.Frames * 0.1 : ClipSeconds);
+                detail += $" · {info.Video!.Codec}";
+                break;
+            }
+
+            case "pdf":
+            {
+                using var pdf = UglyToad.PdfPig.PdfDocument.Open(produced);
+                if (pdf.NumberOfPages < 1) throw new InvalidOperationException("the PDF has no pages");
+                if (sourceCategory == FileCategory.Document)
+                    RequireMarker(string.Join(" ", pdf.GetPages().Select(p => p.Text)));
+                detail += $" · {pdf.NumberOfPages} page(s)";
+                break;
+            }
+
+            case "txt":
+                RequireMarker(await File.ReadAllTextAsync(produced, ct));
+                break;
+
+            case "docx":
+            {
+                using var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(produced, false);
+                RequireMarker(doc.MainDocumentPart?.Document?.Body?.InnerText ?? "");
+                break;
+            }
+
+            case "doc":
+            {
+                // a real binary document from an office program, or RTF from the built-in writer
+                var head = new byte[5];
+                await using (var stream = File.OpenRead(produced)) _ = await stream.ReadAsync(head, ct);
+                bool rtf = System.Text.Encoding.ASCII.GetString(head) == "{\\rtf";
+                if (!rtf && !IsOleDocument(produced)) throw new InvalidOperationException("the output is not a Word document");
+                break;
+            }
+        }
+        return detail;
+    }
+
+    private static string VerifyMerged(string produced, string target, int count)
+    {
+        switch (target)
+        {
+            case "pdf":
+                using (var pdf = UglyToad.PdfPig.PdfDocument.Open(produced))
+                    if (pdf.NumberOfPages != count)
+                        throw new InvalidOperationException($"expected {count} pages, got {pdf.NumberOfPages}");
+                break;
+            case "gif" or "tiff":
+                if (FrameCount(produced) != count)
+                    throw new InvalidOperationException($"expected {count} pictures, got {FrameCount(produced)}");
+                break;
+            default:
+                CheckArchive(produced, ["photo.png", "photo.jpg", "photo.bmp"]);
+                break;
+        }
+        return Size(new FileInfo(produced).Length);
+    }
+
+    private static string Size(long bytes) =>
+        bytes >= 1 << 20 ? $"{bytes / (double)(1 << 20):0.#} MB" : $"{Math.Max(bytes / 1024.0, 0.1):0.#} KB";
+
+    private static void RequireMarker(string text)
+    {
+        if (!text.Contains(Marker, StringComparison.Ordinal))
+            throw new InvalidOperationException("the text did not survive the conversion");
+    }
+
+    private static void CheckDuration(double seconds, double expected = ClipSeconds)
+    {
+        if (Math.Abs(seconds - expected) > Math.Max(0.5, expected * 0.25))
+            throw new InvalidOperationException($"the output runs {seconds:0.##} s instead of {expected:0.##} s");
+    }
+
+    private static (uint Width, uint Height) CheckImage(string path)
+    {
+        var info = new MagickImageInfo(path);
+        if (info.Width == 0 || info.Height == 0) throw new InvalidOperationException("the image has no size");
+        return (info.Width, info.Height);
+    }
+
+    private static int FrameCount(string path) => MagickImageInfo.ReadCollection(path).Count();
+
+    /// <summary>The archive must open and hold exactly the expected files — nothing missing, nothing extra.</summary>
+    private static void CheckArchive(string path, IReadOnlyList<string> expected)
+    {
+        using var archive = ArchiveFactory.Open(path);
+        var names = archive.Entries.Where(e => !e.IsDirectory)
+            .Select(e => (e.Key ?? "").Replace('\\', '/'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = expected.Where(name => !names.Contains(name)).ToList();
+        var extra = names.Where(name => !expected.Contains(name, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                $"the archive is missing {string.Join(", ", missing)} (it holds: {string.Join(", ", names.Take(6))})");
+        if (extra.Count > 0)
+            throw new InvalidOperationException($"the archive holds files that were not in the source: {string.Join(", ", extra.Take(6))}");
+    }
+}

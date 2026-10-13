@@ -1,0 +1,144 @@
+name: Build, test and release
+
+# Runs for pull requests, on demand (Actions tab → "Run workflow"), and for version tags.
+# A tag such as v2.2.0 also creates a GitHub release with the Windows installer and the two
+# downloads attached.
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # What the app is called is said in one place; the steps below take it from there.
+      - name: Read the app's name and version
+        shell: pwsh
+        run: |
+          $app = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup[0]
+          "APP_PROGRAM=$($app.FcProgramName)" >> $env:GITHUB_ENV
+          "APP_COMMAND=$($app.FcUnixName)" >> $env:GITHUB_ENV
+          "APP_VERSION=$($app.Version)" >> $env:GITHUB_ENV
+
+      # What the window's renderer needs; a desktop system already has it.
+      - name: Install fontconfig and a font (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libfontconfig1 fonts-dejavu-core
+
+      # The conversion engines the tests drive, fetched the way the app does it for its users
+      # (FFmpeg and 7-Zip into the app's own tools folder). One retry for a dropped download.
+      - name: Download the conversion engines
+        shell: bash
+        run: |
+          dotnet build FileConverter/FileConverter.csproj -c Release --nologo -v q
+          dotnet "FileConverter/bin/Release/net10.0/$APP_PROGRAM.dll" --setup-tools \
+            || dotnet "FileConverter/bin/Release/net10.0/$APP_PROGRAM.dll" --setup-tools
+
+      # Every conversion the app offers, every detailed setting, and the window rendered off-screen.
+      - name: Test
+        run: dotnet test FileConverter.Tests/FileConverter.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          $name = "$env:APP_PROGRAM-$env:APP_VERSION-${{ matrix.rid }}"
+          dotnet publish FileConverter/FileConverter.csproj -c Release -r ${{ matrix.rid }} -o "artifacts/$name" --nologo
+          $archive = if ('${{ matrix.rid }}' -like 'win-*') { "artifacts/$name.zip" } else { "artifacts/$name.tar.gz" }
+          dotnet run build/Pack.cs -- "artifacts/$name" $archive
+          "FC_FOLDER=artifacts/$name" >> $env:GITHUB_ENV
+          "FC_ARCHIVE=$archive" >> $env:GITHUB_ENV
+
+      # Inno Setup is part of GitHub's Windows machines.
+      - name: Build the installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          build/windows/installer.ps1 -Folder $env:FC_FOLDER
+          "FC_INSTALLER=$env:FC_FOLDER-setup.exe" >> $env:GITHUB_ENV
+
+      # The same check again, this time by the trimmed, self-contained program people download.
+      - name: Self-test the published build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x "$FC_FOLDER/$APP_COMMAND"
+          "$FC_FOLDER/$APP_COMMAND" --self-test
+
+      - name: Self-test the published build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:FC_FOLDER/$env:APP_PROGRAM-cli.exe" --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: download-${{ matrix.rid }}
+          path: ${{ env.FC_ARCHIVE }}
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: download-${{ matrix.rid }}-setup
+          path: ${{ env.FC_INSTALLER }}
+          if-no-files-found: error
+
+      - name: Keep the window screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.rid }}
+          path: FileConverter.Tests/bin/Release/net10.0/screenshots
+          if-no-files-found: ignore
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: download-*
+          merge-multiple: true
+          path: downloads
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title=$(sed -n 's:.*<FcDisplayName>\(.*\)</FcDisplayName>.*:\1:p' Directory.Build.props | head -1)
+          gh release create "$GITHUB_REF_NAME" downloads/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$title ${GITHUB_REF_NAME#v}" \
+            --generate-notes

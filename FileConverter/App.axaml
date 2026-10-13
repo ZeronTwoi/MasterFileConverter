@@ -1,0 +1,28 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:FileConverter"
+             xmlns:core="using:FileConverter.Core"
+             x:Class="FileConverter.App"
+             Name="{x:Static core:AppInfo.DisplayName}"
+             RequestedThemeVariant="Dark">
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Themes/Palette.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <local:CategoryToBrushConverter x:Key="CategoryToBrush" />
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <ColorPaletteResources x:Key="Dark" Accent="#4F8CFF" RegionColor="#121418" ErrorText="#E5595F" />
+                <ColorPaletteResources x:Key="Light" Accent="#2F6FE0" RegionColor="#F3F4F7" ErrorText="#C93A40" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+        <StyleInclude Source="/Themes/Controls.axaml" />
+    </Application.Styles>
+</Application>

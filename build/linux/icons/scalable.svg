@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Master File Converter</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5E9BFF"/>
+      <stop offset="1" stop-color="#2E60DC"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="236" height="236" rx="55.04" fill="url(#tile)"/>
+  <g fill="none" stroke="#fff" stroke-width="23" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M67,89.5 H189 M157,57.5 L189,89.5 L157,121.5"/>
+    <path d="M189,166.5 H67 M99,134.5 L67,166.5 L99,198.5" opacity="0.8"/>
+  </g>
+</svg>

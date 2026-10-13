@@ -1,0 +1,429 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FileConverter.ViewModels"
+        xmlns:settings="using:FileConverter.Core.Settings"
+        xmlns:core="using:FileConverter.Core"
+        x:Class="FileConverter.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{x:Static core:AppInfo.DisplayName}"
+        Icon="/Assets/app.ico"
+        Width="1100" Height="720" MinWidth="980" MinHeight="580"
+        WindowStartupLocation="CenterScreen"
+        DragDrop.AllowDrop="True">
+
+    <Grid Margin="18,14,18,12" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+
+        <!-- ═══ header ═══ -->
+        <Grid Grid.Row="0" Margin="0,0,0,12" ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="10">
+                <!-- the logo, drawn rather than loaded: the same shapes as the icon (build/MakeIcon.cs) -->
+                <Border Width="26" Height="26" CornerRadius="6" VerticalAlignment="Center" ClipToBounds="True"
+                        Background="{StaticResource LogoTileBrush}">
+                    <Viewbox>
+                        <Canvas Width="32" Height="32">
+                            <Path Data="{StaticResource LogoArrowOut}" Stroke="White" StrokeThickness="3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" />
+                            <Path Data="{StaticResource LogoArrowBack}" Stroke="White" StrokeThickness="3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" Opacity="0.8" />
+                        </Canvas>
+                    </Viewbox>
+                </Border>
+                <TextBlock Text="{x:Static core:AppInfo.DisplayName}" FontSize="20" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0"
+                            IsVisible="{Binding ShowBulkTarget}">
+                    <TextBlock Classes="dim" Text="Set all to" FontSize="12" VerticalAlignment="Center" Margin="0,0,7,0" />
+                    <ComboBox Width="96" ItemsSource="{Binding BulkTargetChoices}" SelectedItem="{Binding BulkTarget}"
+                              PlaceholderText="format"
+                              ToolTip.Tip="Pick one target format for every compatible file at once." />
+                </StackPanel>
+                <Button Command="{Binding AddFilesCommand}">
+                    <!-- drawn, not typed: a "＋" character is missing from some fonts -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Data="{StaticResource IconPlus}" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.5"
+                              StrokeLineCap="Round" Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center" />
+                        <TextBlock Text="Add files" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Content="Add folder" Command="{Binding AddFolderCommand}"
+                        ToolTip.Tip="Add every file in a folder, including its subfolders." />
+                <Button Content="Clear" IsEnabled="{Binding HasItems}">
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuItem Header="Remove finished files" Command="{Binding ClearFinishedCommand}"
+                                      IsEnabled="{Binding HasFinishedItems}" />
+                            <MenuItem Header="Remove all files" Command="{Binding ClearAllCommand}" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+                <ToggleButton IsChecked="{Binding DetailedSettingsOpen}"
+                              ToolTip.Tip="Show precise settings for each conversion — quality numbers, sizes, formats, bitrates — instead of only the simple File size slider. They are saved per target format.">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Data="{StaticResource IconSliders}" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4"
+                              StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
+                        <TextBlock Text="Detailed settings" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ToggleButton>
+            </StackPanel>
+        </Grid>
+
+        <!-- ═══ setup banner ═══ -->
+        <Border Grid.Row="1" Background="{DynamicResource SetupBannerBrush}"
+                BorderBrush="{DynamicResource SetupBannerBorderBrush}" BorderThickness="1" CornerRadius="8"
+                Padding="14,10" Margin="0,0,0,12" IsVisible="{Binding SetupNeeded}">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel>
+                    <TextBlock FontWeight="SemiBold" TextWrapping="Wrap"
+                               Text="One-time setup: download the conversion engines (FFmpeg for audio and video, 7-Zip for archives)" />
+                    <TextBlock Classes="dim" FontSize="12" Margin="0,3,0,0" Text="{Binding SetupStatus}"
+                               IsVisible="{Binding SetupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <ProgressBar Value="{Binding SetupProgress}" Maximum="100" Margin="0,8,0,2" Height="4"
+                                 IsVisible="{Binding SetupRunning}" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="accent" Content="Set up engines" VerticalAlignment="Center" Margin="14,0,0,0"
+                        Command="{Binding SetupToolsCommand}" IsEnabled="{Binding !SetupRunning}" />
+            </Grid>
+        </Border>
+
+        <!-- ═══ file list, with the detailed settings beside it when they are switched on ═══ -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+        <Border Grid.Column="0" Classes="card">
+            <Grid>
+                <!-- empty state -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsVisible="{Binding !HasItems}">
+                    <Path Data="M 12,2 V 16 M 6,10 L 12,16 L 18,10 M 3,22 H 21" Stroke="{DynamicResource TextDimBrush}"
+                          StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                          Width="46" Height="46" Stretch="Uniform" HorizontalAlignment="Center" />
+                    <TextBlock Text="Drop files or folders anywhere" FontSize="17" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,12,0,3" />
+                    <TextBlock Classes="dim" FontSize="12.5" HorizontalAlignment="Center"
+                               Text="images · audio · video · documents · archives — then pick a target format for each file" />
+                </StackPanel>
+
+                <ListBox x:Name="FileList" Classes="files" ItemsSource="{Binding Items}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectedItem="{Binding SelectedItem}" IsVisible="{Binding HasItems}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FileItemViewModel">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="54" />
+                                    <ColumnDefinition Width="2.2*" MinWidth="110" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="3*" MinWidth="90" />
+                                    <!-- fixed, so the columns line up whether or not a row has result buttons -->
+                                    <ColumnDefinition Width="88" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- category chip -->
+                                <Border Grid.Column="0" CornerRadius="5" Padding="0,3" Margin="0,0,10,0" VerticalAlignment="Center"
+                                        Background="{Binding Category, Converter={StaticResource CategoryToBrush}}">
+                                    <TextBlock Text="{Binding Extension}" FontSize="11" FontWeight="Bold"
+                                               Foreground="{StaticResource ChipTextBrush}" HorizontalAlignment="Center" />
+                                </Border>
+
+                                <!-- name + size -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding FileName}" FontSize="13.5" FontWeight="Medium"
+                                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                                        <TextBlock Classes="dim" Text="{Binding SizeText}" FontSize="11.5" />
+                                        <TextBlock Text="  ·  detailed settings" FontSize="11.5"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   IsVisible="{Binding HasCustomSettings}"
+                                                   ToolTip.Tip="This file converts with precise settings from the Detailed settings panel." />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="2" Classes="dim" Text="→" FontSize="15" VerticalAlignment="Center"
+                                           Margin="2,0,10,0" />
+
+                                <!-- target format -->
+                                <ComboBox Grid.Column="3" Width="96" ItemsSource="{Binding TargetOptions}"
+                                          SelectedItem="{Binding SelectedTarget}" />
+
+                                <!-- status + progress -->
+                                <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="16,0,10,0">
+                                    <TextBlock Classes="status" Classes.converting="{Binding IsConverting}"
+                                               Classes.done="{Binding IsDone}" Classes.failed="{Binding IsFailed}"
+                                               Text="{Binding StatusText}" TextTrimming="CharacterEllipsis"
+                                               ToolTip.Tip="{Binding StatusText}" />
+                                    <ProgressBar Value="{Binding Progress}" Maximum="100" Margin="0,5,0,0" />
+                                </StackPanel>
+
+                                <!-- result and row actions -->
+                                <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2"
+                                            HorizontalAlignment="Right">
+                                    <Button Classes="icon" IsVisible="{Binding HasResult}" ToolTip.Tip="Open the result"
+                                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenResultCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Data="{StaticResource IconOpen}" />
+                                    </Button>
+                                    <Button Classes="icon" IsVisible="{Binding HasResult}" ToolTip.Tip="Show the result in its folder"
+                                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ShowResultInFolderCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Data="{StaticResource IconFolder}" />
+                                    </Button>
+                                    <Button Classes="icon" ToolTip.Tip="Remove from the list"
+                                            Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RemoveItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Data="{StaticResource IconClose}" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- detailed settings of the selected file's conversion -->
+        <Border Grid.Column="1" Classes="card" Width="372" Margin="12,0,0,0" IsVisible="{Binding DetailedSettingsOpen}">
+            <Grid RowDefinitions="Auto,*,Auto" DataContext="{Binding Detail}" x:DataType="vm:DetailPanelViewModel">
+
+                <StackPanel Margin="16,14,16,8">
+                    <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" />
+                    <TextBlock Classes="dim" Text="{Binding Subtitle}" FontSize="11.5" Margin="0,2,0,0"
+                               TextTrimming="CharacterEllipsis" IsVisible="{Binding HasContext}"
+                               ToolTip.Tip="{Binding Subtitle}" />
+                </StackPanel>
+
+                <TextBlock Grid.Row="1" Classes="dim" Text="{Binding EmptyText}" TextWrapping="Wrap" Margin="16,6,16,16"
+                           IsVisible="{Binding !HasSettings}" />
+
+                <ScrollViewer Grid.Row="1" IsVisible="{Binding HasSettings}" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="16,0,16,14">
+
+                        <!-- who the settings are for -->
+                        <RadioButton GroupName="DetailScope" Content="{Binding ScopeAllText}" IsChecked="{Binding ScopeIsAll}"
+                                     ToolTip.Tip="These settings are used for every file converted to this format, and are remembered for next time." />
+                        <RadioButton GroupName="DetailScope" Content="{Binding ScopeFileText}" IsChecked="{Binding OnlyThisFile}"
+                                     ToolTip.Tip="Settings for the selected file alone. Anything left empty follows the format's settings." />
+
+                        <!-- presets -->
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0" IsVisible="{Binding HasPresets}">
+                            <ComboBox HorizontalAlignment="Stretch" PlaceholderText="Choose a preset…"
+                                      ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                                      ToolTip.Tip="A preset fills in a whole set of settings at once. Whatever it does not mention goes back to automatic.">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PresetChoice">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="1" Classes="icon" Height="32" Width="30" Margin="4,0,0,0"
+                                    Command="{Binding DeletePresetCommand}" IsVisible="{Binding CanDeletePreset}"
+                                    ToolTip.Tip="Delete this preset">
+                                <Path Data="{StaticResource IconClose}" />
+                            </Button>
+                        </Grid>
+
+                        <!-- "this is no longer a copy" -->
+                        <Border Background="{DynamicResource InfoBannerBrush}" BorderBrush="{DynamicResource InfoBannerBorderBrush}"
+                                BorderThickness="1" CornerRadius="7" Padding="10,8" Margin="0,12,0,0"
+                                IsVisible="{Binding Warning, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <TextBlock Text="{Binding Warning}" TextWrapping="Wrap" FontSize="11.5" />
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding Groups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SettingGroupViewModel">
+                                    <StackPanel Margin="0,16,0,0">
+                                        <TextBlock Classes="grouphead" Text="{Binding Name}" />
+                                        <ItemsControl ItemsSource="{Binding Rows}">
+                                            <ItemsControl.DataTemplates>
+                                                <DataTemplate x:DataType="vm:TextSettingRow">
+                                                    <Grid ColumnDefinitions="*,172" Margin="0,7,0,0" Background="Transparent"
+                                                          ToolTip.Tip="{Binding Help}">
+                                                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                                                   Margin="0,0,10,0" />
+                                                        <TextBox Grid.Column="1" Classes.secret="{Binding IsSecret}"
+                                                                 Text="{Binding Text, UpdateSourceTrigger=LostFocus}"
+                                                                 PlaceholderText="{Binding Watermark}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                                <DataTemplate x:DataType="vm:ChoiceSettingRow">
+                                                    <Grid ColumnDefinitions="*,172" Margin="0,7,0,0" Background="Transparent"
+                                                          ToolTip.Tip="{Binding Help}">
+                                                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                                                   Margin="0,0,10,0" />
+                                                        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                                                  ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate x:DataType="settings:SettingChoice">
+                                                                    <TextBlock Text="{Binding Label}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.DataTemplates>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Border Grid.Row="2" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="0,1,0,0" Padding="16,10,16,12"
+                        IsVisible="{Binding HasSettings}">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Text="{Binding NewPresetName}" PlaceholderText="Save as preset…"
+                                 ToolTip.Tip="Type a name and press Save to keep the settings in force for this file as a preset of your own. Passwords are never included." />
+                        <Button Grid.Column="1" Content="Save" Margin="6,0,0,0" Height="32" Padding="12,0"
+                                Command="{Binding SavePresetCommand}" />
+                        <Button Grid.Column="2" Content="Reset" Margin="6,0,0,0" Height="32" Padding="12,0"
+                                Command="{Binding ResetCommand}"
+                                ToolTip.Tip="Put every setting shown here back to automatic." />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+        </Grid>
+
+        <!-- ═══ combine banner — shown when several files share a combinable target ═══ -->
+        <Border Grid.Row="3" Background="{DynamicResource InfoBannerBrush}"
+                BorderBrush="{DynamicResource InfoBannerBorderBrush}" BorderThickness="1" CornerRadius="8"
+                Padding="14,7" Margin="0,12,0,0" IsVisible="{Binding HasMergeableGroups}">
+            <Grid ColumnDefinitions="Auto,*">
+                <CheckBox Content="Combine into one file" FontWeight="SemiBold" VerticalAlignment="Center"
+                          IsChecked="{Binding CombineFiles}"
+                          ToolTip.Tip="Files with the same target merge into a single output — e.g. 20 images become one multi-page PDF. Pages follow the file-name order (1, 2, 3…). Untick to convert every file separately." />
+                <TextBlock Grid.Column="1" Classes="dim" Text="{Binding MergeHint}" FontSize="12" Margin="16,0,0,0"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding MergeHint}" />
+            </Grid>
+        </Border>
+
+        <!-- ═══ settings ═══ -->
+        <Border Grid.Row="4" Classes="card" Padding="16,12" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2.1*" />
+                    <ColumnDefinition Width="3*" />
+                    <ColumnDefinition Width="2.7*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- size slider -->
+                <StackPanel Grid.Column="0" Margin="0,0,24,0"
+                            ToolTip.Tip="Target size of the result as a share of the original. Smaller file = lower quality; 100% keeps the best quality the target format allows.">
+                    <TextBlock Classes="label" Text="File size" />
+                    <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                            Value="{Binding SizePercent}" Margin="0,-1,0,-7" />
+                    <TextBlock Classes="hint" Text="{Binding SizePercentText}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- speed -->
+                <StackPanel Grid.Column="1" Margin="0,0,24,0">
+                    <TextBlock Classes="label" Text="Speed" />
+                    <!-- one line when there is room, two when the window is narrow -->
+                    <WrapPanel Margin="0,7,0,0">
+                        <ComboBox Width="126" Margin="0,0,12,0"
+                                  ItemsSource="{Binding SpeedOptions}" SelectedIndex="{Binding SpeedIndex}"
+                                  IsEnabled="{Binding !AutoSpeed}"
+                                  ToolTip.Tip="Faster = quicker conversion and slightly larger files. At 100% size the quality is the same on every setting." />
+                        <CheckBox Content="Auto" Margin="0,0,12,0" Height="32" IsChecked="{Binding AutoSpeed}"
+                                  ToolTip.Tip="Pick the speed that suits this PC's processor and graphics card. Nothing leaves the machine." />
+                        <CheckBox Content="Use GPU" Height="32" IsChecked="{Binding UseGpu}" IsEnabled="{Binding GpuAvailable}"
+                                  ToolTip.ShowOnDisabled="True"
+                                  ToolTip.Tip="Encode video on the graphics card whenever that is clearly faster than this PC's processor (measured once, see the status bar). At 100% this only makes files a little larger, not worse. &quot;Best quality&quot; always uses the CPU encoder, which compresses hardest." />
+                    </WrapPanel>
+                    <TextBlock Classes="hint" Text="{Binding EffectiveSpeedText}" Margin="0,6,0,0"
+                               TextTrimming="CharacterEllipsis" IsVisible="{Binding AutoSpeed}"
+                               ToolTip.Tip="{Binding EffectiveSpeedText}" />
+                </StackPanel>
+
+                <!-- where results go -->
+                <StackPanel Grid.Column="2" Margin="0,0,24,0">
+                    <WrapPanel>
+                        <StackPanel Margin="0,0,18,0">
+                            <TextBlock Classes="label" Text="Save to" />
+                            <StackPanel Orientation="Horizontal" Margin="0,7,0,0" Spacing="4">
+                                <Button Content="Choose…" Padding="12,6" Height="32" Command="{Binding ChooseOutputCommand}" />
+                                <Button Classes="icon" Height="32" Width="30" Command="{Binding ResetOutputCommand}"
+                                        IsVisible="{Binding HasCustomOutputDirectory}"
+                                        ToolTip.Tip="Go back to saving each result next to its source file.">
+                                    <Path Data="{StaticResource IconClose}" />
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Classes="label" Text="If the file exists" />
+                            <ComboBox Width="128" HorizontalAlignment="Left" Margin="0,7,0,0"
+                                      ItemsSource="{Binding ExistingFileOptions}" SelectedIndex="{Binding ExistingFileIndex}"
+                                      ToolTip.Tip="What happens when a result would get a name that is already taken in the target folder. Keep both adds a number (photo (1).jpg); Replace overwrites the old result; Skip leaves that file unconverted. The source file itself is never replaced." />
+                        </StackPanel>
+                    </WrapPanel>
+                    <TextBlock Classes="hint" Text="{Binding OutputDirectoryText}" Margin="0,6,0,0"
+                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding OutputDirectoryText}" />
+                </StackPanel>
+
+                <!-- convert -->
+                <StackPanel Grid.Column="3" VerticalAlignment="Center" MinWidth="170">
+                    <Button Classes="accent" Content="{Binding ConvertButtonText}" FontSize="14"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                            Command="{Binding ConvertAllCommand}" IsVisible="{Binding !IsConverting}" />
+                    <Button Content="Cancel" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                            Command="{Binding CancelAllCommand}" IsVisible="{Binding IsConverting}" />
+                    <ProgressBar Value="{Binding OverallProgress}" Maximum="100" Margin="0,8,0,0"
+                                 IsVisible="{Binding IsConverting}" />
+                    <TextBlock Classes="dim" Text="{Binding OverallStatus}" FontSize="11.5" Margin="0,6,0,0"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="220"
+                               IsVisible="{Binding OverallStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══ engine status bar ═══ -->
+        <Grid Grid.Row="5" Margin="2,10,0,0" ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal">
+                <StackPanel.Styles>
+                    <Style Selector="TextBlock">
+                        <Setter Property="FontSize" Value="11.5" />
+                        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+                        <Setter Property="Margin" Value="0,0,16,0" />
+                        <Setter Property="VerticalAlignment" Value="Center" />
+                    </Style>
+                </StackPanel.Styles>
+                <Ellipse Classes="dot" Classes.on="{Binding FfmpegAvailable}" Classes.warn="{Binding !FfmpegComplete}" />
+                <TextBlock Text="FFmpeg (audio/video)" ToolTip.Tip="{Binding FfmpegStatusDetail}" />
+                <Ellipse Classes="dot" Classes.on="{Binding GpuInUse}" />
+                <TextBlock Text="{Binding GpuStatusText}" ToolTip.Tip="{Binding GpuStatusDetail}" />
+                <Ellipse Classes="dot" Classes.on="{Binding SevenZipAvailable}" />
+                <TextBlock Text="7-Zip (.7z)" ToolTip.Tip="Needed to create .7z archives, and the fastest way to unpack them." />
+                <Ellipse Classes="dot" Classes.on="{Binding OfficeEngineAvailable}" />
+                <TextBlock Text="Office engine (doc fidelity)" ToolTip.Tip="{Binding OfficeEngineTip}" />
+                <Ellipse Classes="dot" Classes.on="{Binding RarAvailable}" />
+                <TextBlock Text="RAR encoder (.rar output)"
+                           ToolTip.Tip="RAR is proprietary: only RARLAB's own encoder (part of WinRAR, or the rar command on Linux) may create .rar files. Reading and converting FROM .rar always works." />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <TextBlock Classes="dim" Text="{Binding VersionText}" FontSize="11.5" VerticalAlignment="Center" />
+                <Button Classes="icon" Width="28" Height="22" Padding="0" ToolTip.Tip="Appearance, settings file and licences">
+                    <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
+                        <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
+                        <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout Placement="TopEdgeAlignedRight">
+                            <MenuItem Header="Dark" ToggleType="Radio" IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
+                                      Command="{Binding SetThemeCommand}" CommandParameter="dark" />
+                            <MenuItem Header="Light" ToggleType="Radio" IsChecked="{Binding IsLightTheme, Mode=OneWay}"
+                                      Command="{Binding SetThemeCommand}" CommandParameter="light" />
+                            <MenuItem Header="Match the system" ToggleType="Radio" IsChecked="{Binding IsSystemTheme, Mode=OneWay}"
+                                      Command="{Binding SetThemeCommand}" CommandParameter="system" />
+                            <Separator />
+                            <MenuItem Header="Open the settings folder" Command="{Binding OpenSettingsFolderCommand}" />
+                            <MenuItem Header="Licences" Command="{Binding OpenLicencesCommand}" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,48 @@
+<Project>
+
+    <!--
+        The app's name and version, said once. Everything that shows or carries them takes them
+        from here: the programs and the details Windows shows for them, the window, the command
+        line, the folders settings and engines are kept in, the Linux menu entry and the names
+        of the downloads. (Code reads them as AppInfo.DisplayName and so on — a file the build
+        writes, see FileConverter.Core.csproj.)
+    -->
+    <PropertyGroup>
+        <Version>2.2.0</Version>
+        <!-- as people read it -->
+        <FcDisplayName>Master File Converter</FcDisplayName>
+        <!-- as one word: the programs, the downloads, the data folder on Windows -->
+        <FcProgramName>MasterFileConverter</FcProgramName>
+        <!-- the way Linux writes names: the command, the menu entry, the icon, the folders under ~/.config and ~/.local/share -->
+        <FcUnixName>masterfileconverter</FcUnixName>
+        <FcSummary>Convert images, audio, video, documents and archives</FcSummary>
+        <!-- where the app lives: its source, its downloads (…/releases/latest), its issues -->
+        <FcWebsite>https://github.com/ZeronTwoi/MasterFileConverter</FcWebsite>
+
+        <Product>$(FcDisplayName)</Product>
+        <Company>Zeronoid</Company>
+        <Authors>$(Company)</Authors>
+        <Copyright>© 2026 $(Company)</Copyright>
+        <!-- the version exactly as written above, without the commit it was built from -->
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    </PropertyGroup>
+
+    <!-- The files that ship carry the app's name; the projects keep their shorter working names. -->
+    <PropertyGroup Condition="$(MSBuildProjectName.StartsWith('FileConverter')) and '$(MSBuildProjectName)' != 'FileConverter.Tests'">
+        <AssemblyName>$(FcProgramName)$(MSBuildProjectName.Substring(13))</AssemblyName>
+    </PropertyGroup>
+
+    <!--
+        Which operating system a build is for. Publishing with -r win-x64 / -r linux-x64 decides it;
+        a plain build targets the machine it runs on. The app references exactly one platform
+        project from this, so a Windows download carries no Linux code and the other way round.
+        Override with -p:FcTargetOS=windows|linux.
+    -->
+    <PropertyGroup Condition="'$(FcTargetOS)' == ''">
+        <FcTargetOS Condition="$(RuntimeIdentifier.StartsWith('win'))">windows</FcTargetOS>
+        <FcTargetOS Condition="$(RuntimeIdentifier.StartsWith('linux'))">linux</FcTargetOS>
+        <FcTargetOS Condition="'$(FcTargetOS)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">windows</FcTargetOS>
+        <FcTargetOS Condition="'$(FcTargetOS)' == ''">linux</FcTargetOS>
+    </PropertyGroup>
+
+</Project>

@@ -1,0 +1,7 @@
+# Files Linux reads must keep Unix line endings wherever the repository is checked out.
+*.sh       text eol=lf
+*.desktop  text eol=lf
+*.svg      text eol=lf
+
+*.png  binary
+*.ico  binary

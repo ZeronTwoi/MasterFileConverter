@@ -1,0 +1,269 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The app: one Avalonia window on Windows and Linux, plus the command line. -->
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- "File description" in a program's details on Windows, and its name in Task Manager -->
+        <AssemblyTitle>$(FcDisplayName)</AssemblyTitle>
+        <!-- written by FcWriteManifest below, from app.manifest -->
+        <ApplicationManifest>$(BaseIntermediateOutputPath)app.manifest</ApplicationManifest>
+        <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <!-- Word is automated through COM; a trimmed build drops that support unless told to keep it -->
+        <BuiltInComInteropSupport Condition="'$(FcTargetOS)' == 'windows'">true</BuiltInComInteropSupport>
+    </PropertyGroup>
+
+    <!--
+        A build for a named system (dotnet publish -r win-x64 / -r linux-x64, see build/publish.*) is the
+        download: it brings its own .NET, so nothing has to be installed first, and the parts of .NET
+        and Avalonia the app never calls are trimmed away. "partial" trims only libraries that declare
+        themselves safe to trim — the image, PDF and archive engines are left whole.
+    -->
+    <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+        <SelfContained>true</SelfContained>
+        <PublishTrimmed>true</PublishTrimmed>
+        <TrimMode>partial</TrimMode>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <!-- IL2104 only repeats that Avalonia's designer-support library (unused at run time) has trim warnings of its own -->
+        <NoWarn>$(NoWarn);IL2104</NoWarn>
+        <!--
+            Everything is compiled to machine code ahead of time, the app and .NET together as one
+            image. That is size spent on speed: measured in alternation on Windows, the window is
+            up in 0.39 s instead of 0.57 s, and the first document conversion after a start no
+            longer waits for its library to be compiled (PDF → text 0.45 → 0.20 s, text → Word
+            0.20 → 0.13 s). It costs 30 MB unpacked and 11 MB of download over compiling only
+            what start-up touches.
+        -->
+        <PublishReadyToRun>true</PublishReadyToRun>
+        <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RuntimeIdentifier)' != '' and '$(Configuration)' == 'Release'">
+        <DebugType>none</DebugType>
+        <DebugSymbols>false</DebugSymbols>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(FcTargetOS)' == 'windows'">
+        <DefineConstants>$(DefineConstants);FC_WINDOWS</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(FcTargetOS)' == 'linux'">
+        <DefineConstants>$(DefineConstants);FC_LINUX</DefineConstants>
+        <!-- .NET on Linux normally needs the ICU libraries of the distribution and refuses to start
+             without them. The app compares and formats nothing language-specific, so it runs without:
+             one dependency less on every system. -->
+        <InvariantGlobalization>true</InvariantGlobalization>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AvaloniaResource Include="Assets\**" />
+        <!-- this build runs on one operating system only, like the platform project it references -->
+        <AssemblyAttribute Include="System.Runtime.Versioning.SupportedOSPlatformAttribute">
+            <_Parameter1>$(FcTargetOS)</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="12.1.4" />
+        <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+        <PackageReference Include="Avalonia.HarfBuzz" Version="12.1.4" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+        <ProjectReference Include="..\FileConverter.Core\FileConverter.Core.csproj" />
+    </ItemGroup>
+
+    <!-- Exactly one operating system's parts per build: its windowing backend and its platform project.
+         (Avalonia.Desktop is deliberately not referenced — it pulls in every backend, macOS included.) -->
+    <ItemGroup Condition="'$(FcTargetOS)' == 'windows'">
+        <PackageReference Include="Avalonia.Win32" Version="12.1.4" />
+        <ProjectReference Include="..\FileConverter.Platform.Windows\FileConverter.Platform.Windows.csproj" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(FcTargetOS)' == 'linux'">
+        <PackageReference Include="Avalonia.X11" Version="12.1.4" />
+        <!-- Linux desktops differ in which fonts are installed; the app brings its own -->
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+        <ProjectReference Include="..\FileConverter.Platform.Linux\FileConverter.Platform.Linux.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="FileConverter.Tests" />
+    </ItemGroup>
+
+    <!-- The licences travel with the program, in a folder the window's menu opens: its own, the list
+         of the libraries in it, and their texts. (A download adds those the libraries' packages
+         bring themselves, see FcArrangeDownload.) -->
+    <ItemGroup>
+        <None Include="../LICENSE" Link="licenses/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="../THIRD-PARTY-NOTICES.md" Link="licenses/THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="../build/licenses/*" Exclude="../build/licenses/OFL-1.1-Inter.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+        <!-- the font only the Linux build brings -->
+        <None Include="../build/licenses/OFL-1.1-Inter.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"
+              Condition="'$(FcTargetOS)' == 'linux'" />
+    </ItemGroup>
+
+    <!-- The Windows manifest names the program and its version: both filled in from Directory.Build.props. -->
+    <Target Name="FcWriteManifest" BeforeTargets="CoreCompile" DependsOnTargets="GetAssemblyVersion">
+        <WriteLinesToFile File="$(ApplicationManifest)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                          Lines="$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/app.manifest').Replace('@Name@', '$(Company).$(FcProgramName)').Replace('@DisplayName@', '$(FcDisplayName)').Replace('@Version@', '$(FileVersion)'))))" />
+    </Target>
+
+    <!-- The graphics libraries ship their debug symbols (100 MB); a download has no use for them. -->
+    <Target Name="FcLeaveOutDebugSymbols" AfterTargets="ComputeResolvedFilesToPublishList">
+        <ItemGroup>
+            <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb' or '%(Extension)' == '.dbg'" />
+        </ItemGroup>
+    </Target>
+
+    <!--
+        Windows only: the app's .exe is a windowed program, which a terminal does not wait for and
+        whose output scripts cannot read. The one ending in "-cli" is a second launcher for the very
+        same program, marked as a console program instead. (Linux has no such distinction.)
+        This pair is for running out of the build folder; a download gets its own, below.
+    -->
+    <Target Name="FcCreateConsoleHost" AfterTargets="_CreateAppHost"
+            Condition="'$(FcTargetOS)' == 'windows' and '$(AppHostSourcePath)' != '' and Exists('$(AppHostSourcePath)') and Exists('@(IntermediateAssembly)')">
+        <!-- set here, not at the top of the file: only now does the intermediate folder include the runtime -->
+        <PropertyGroup>
+            <FcConsoleHost>$(IntermediateOutputPath)$(AssemblyName)-cli.exe</FcConsoleHost>
+        </PropertyGroup>
+        <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"
+                       AppHostDestinationPath="$(FcConsoleHost)"
+                       AppBinaryName="$(AssemblyName)$(TargetExt)"
+                       IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+                       WindowsGraphicalUserInterface="false"
+                       Retries="$(CopyRetryCount)"
+                       RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)" />
+    </Target>
+    <Target Name="FcCopyConsoleHostToOutput" AfterTargets="CopyFilesToOutputDirectory"
+            Condition="'$(FcTargetOS)' == 'windows' and '$(FcConsoleHost)' != '' and Exists('$(FcConsoleHost)')">
+        <Copy SourceFiles="$(FcConsoleHost)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    </Target>
+
+    <!--
+        A download, tidied. On top lies only what a person starts: the program (on Windows two, the
+        window and its console twin) and on Linux the install script. Everything the program is
+        made of goes into the folder "app" beside it.
+
+        A launcher is the small native program .NET makes for an app; here it is told that the
+        app lies one folder down. It carries the icon, name, version and copyright that Windows
+        shows for a program, taken from the app itself.
+    -->
+    <Target Name="FcArrangeDownload" AfterTargets="ComputeFilesToPublish"
+            DependsOnTargets="_GetAppHostPaths;_GetAppHostCreationConfiguration">
+        <!-- Paths are written with "/" throughout: both systems build with that, whichever of them the build runs on. -->
+        <PropertyGroup>
+            <FcLauncherFolder>$(IntermediateOutputPath)launchers/</FcLauncherFolder>
+            <FcLauncher Condition="'$(FcTargetOS)' == 'windows'">$(FcProgramName).exe</FcLauncher>
+            <FcLauncher Condition="'$(FcTargetOS)' != 'windows'">$(FcUnixName)</FcLauncher>
+            <!-- the one exception: this is read by the launcher, and has to be as its own system writes a path -->
+            <FcAppFromLauncher Condition="'$(FcTargetOS)' == 'windows'">app\$(AssemblyName).dll</FcAppFromLauncher>
+            <FcAppFromLauncher Condition="'$(FcTargetOS)' != 'windows'">app/$(AssemblyName).dll</FcAppFromLauncher>
+        </PropertyGroup>
+        <Error Condition="'$(AppHostSourcePath)' == '' or !Exists('$(AppHostSourcePath)')"
+               Text="No launcher to build the download from: .NET's app host for $(RuntimeIdentifier) was not found." />
+
+        <ItemGroup>
+            <!-- the launcher made for the build folder expects the app beside it -->
+            <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                                   Condition="'%(ResolvedFileToPublish.RelativePath)' == '$(AssemblyName)$(_NativeExecutableExtension)'" />
+            <ResolvedFileToPublish>
+                <RelativePath>app/%(ResolvedFileToPublish.RelativePath)</RelativePath>
+            </ResolvedFileToPublish>
+        </ItemGroup>
+
+        <MakeDir Directories="$(FcLauncherFolder)" />
+        <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"
+                       AppHostDestinationPath="$(FcLauncherFolder)$(FcLauncher)"
+                       AppBinaryName="$(FcAppFromLauncher)"
+                       IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+                       WindowsGraphicalUserInterface="$(_UseWindowsGraphicalUserInterface)"
+                       Retries="$(CopyRetryCount)"
+                       RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)" />
+        <CreateAppHost Condition="'$(FcTargetOS)' == 'windows'"
+                       AppHostSourcePath="$(AppHostSourcePath)"
+                       AppHostDestinationPath="$(FcLauncherFolder)$(FcProgramName)-cli.exe"
+                       AppBinaryName="$(FcAppFromLauncher)"
+                       IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+                       WindowsGraphicalUserInterface="false"
+                       Retries="$(CopyRetryCount)"
+                       RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)" />
+        <ItemGroup>
+            <ResolvedFileToPublish Include="$(FcLauncherFolder)$(FcLauncher)" RelativePath="$(FcLauncher)" CopyToPublishDirectory="Always" />
+            <ResolvedFileToPublish Include="$(FcLauncherFolder)$(FcProgramName)-cli.exe" RelativePath="$(FcProgramName)-cli.exe"
+                                   CopyToPublishDirectory="Always" Condition="'$(FcTargetOS)' == 'windows'" />
+        </ItemGroup>
+
+        <!-- The licence and notice files that the libraries' own packages bring (ImageMagick's, Skia's,
+             .NET's …), each in a folder named after its package, beside the ones from the repository.
+             Taken from the packages this very download is made of, so they match it. -->
+        <ItemGroup>
+            <FcPackage Include="@(ResolvedFileToPublish->'%(NuGetPackageId)/%(NuGetPackageVersion)')"
+                       Condition="'%(ResolvedFileToPublish.NuGetPackageId)' != '' and '%(ResolvedFileToPublish.NuGetPackageVersion)' != ''" />
+            <!-- .NET itself: the one runtime the app is built on, not the others the SDK knows of -->
+            <FcPackage Include="@(ResolvedRuntimePack->'%(NuGetPackageId)/%(NuGetPackageVersion)')"
+                       Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'" />
+            <FcShippedPackage Include="@(FcPackage->Distinct())" />
+            <FcPackageNotice Include="$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))$([System.String]::Copy('%(FcShippedPackage.Identity)').ToLowerInvariant())/LICENSE*;
+                                      $([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))$([System.String]::Copy('%(FcShippedPackage.Identity)').ToLowerInvariant())/License*;
+                                      $([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))$([System.String]::Copy('%(FcShippedPackage.Identity)').ToLowerInvariant())/Notice*;
+                                      $([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))$([System.String]::Copy('%(FcShippedPackage.Identity)').ToLowerInvariant())/THIRD-PARTY-NOTICES*;
+                                      $([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))$([System.String]::Copy('%(FcShippedPackage.Identity)').ToLowerInvariant())/ThirdPartyNotices*"
+                             Package="%(FcShippedPackage.NuGetPackageId)" />
+            <!-- a file system that ignores case finds a file under two of those spellings -->
+            <FcPackageNoticeOnce Include="@(FcPackageNotice->Distinct())" />
+            <ResolvedFileToPublish Include="@(FcPackageNoticeOnce)" CopyToPublishDirectory="PreserveNewest"
+                                   RelativePath="app/licenses/%(FcPackageNoticeOnce.Package)/%(Filename)%(Extension)" />
+        </ItemGroup>
+
+        <!-- Linux: the install script on top; the menu entry and the icons laid out the way a system keeps them -->
+        <FcFillIn Condition="'$(FcTargetOS)' == 'linux'"
+                  Source="$(MSBuildProjectDirectory)/../build/linux/install.sh" Destination="$(FcLauncherFolder)install.sh"
+                  Values="DisplayName=$(FcDisplayName)|ProgramName=$(FcProgramName)|UnixName=$(FcUnixName)|Summary=$(FcSummary)" />
+        <FcFillIn Condition="'$(FcTargetOS)' == 'linux'"
+                  Source="$(MSBuildProjectDirectory)/../build/linux/app.desktop" Destination="$(FcLauncherFolder)app.desktop"
+                  Values="DisplayName=$(FcDisplayName)|ProgramName=$(FcProgramName)|UnixName=$(FcUnixName)|Summary=$(FcSummary)" />
+        <!-- built on Linux, the script can be run from the folder as it is (a build on Windows has no
+             such mark to give; in the .tar.gz, build/Pack.cs sets it either way) -->
+        <Exec Condition="'$(FcTargetOS)' == 'linux' and '$(OS)' != 'Windows_NT'"
+              Command="chmod +x &quot;$(FcLauncherFolder)install.sh&quot;" />
+        <ItemGroup Condition="'$(FcTargetOS)' == 'linux'">
+            <FcLinuxIcon Include="$(MSBuildProjectDirectory)/../build/linux/icons/*.png" />
+            <ResolvedFileToPublish Include="$(FcLauncherFolder)install.sh" RelativePath="install.sh" CopyToPublishDirectory="Always" />
+            <ResolvedFileToPublish Include="$(FcLauncherFolder)app.desktop" CopyToPublishDirectory="Always"
+                                   RelativePath="app/share/applications/$(FcUnixName).desktop" />
+            <ResolvedFileToPublish Include="@(FcLinuxIcon)" CopyToPublishDirectory="PreserveNewest"
+                                   RelativePath="app/share/icons/hicolor/%(FcLinuxIcon.Filename)x%(FcLinuxIcon.Filename)/apps/$(FcUnixName).png" />
+            <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)/../build/linux/icons/scalable.svg" CopyToPublishDirectory="PreserveNewest"
+                                   RelativePath="app/share/icons/hicolor/scalable/apps/$(FcUnixName).svg" />
+        </ItemGroup>
+    </Target>
+
+    <!--
+        Copies a text file with its @Name@ marks replaced and its "#@" lines (notes for whoever
+        edits the file here) left out, keeping Unix line endings: what Linux reads.
+    -->
+    <UsingTask TaskName="FcFillIn" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+        <ParameterGroup>
+            <Source ParameterType="System.String" Required="true" />
+            <Destination ParameterType="System.String" Required="true" />
+            <Values ParameterType="System.String" Required="true" />
+        </ParameterGroup>
+        <Task>
+            <Code Type="Fragment" Language="cs"><![CDATA[
+                var text = System.IO.File.ReadAllText(Source).Replace("\r\n", "\n");
+                text = System.Text.RegularExpressions.Regex.Replace(text, "^#@.*\n", "", System.Text.RegularExpressions.RegexOptions.Multiline);
+                foreach (var pair in Values.Split('|'))
+                {
+                    int equals = pair.IndexOf('=');
+                    text = text.Replace("@" + pair.Substring(0, equals) + "@", pair.Substring(equals + 1));
+                }
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Destination));
+                if (!System.IO.File.Exists(Destination) || System.IO.File.ReadAllText(Destination) != text)
+                    System.IO.File.WriteAllText(Destination, text, new System.Text.UTF8Encoding(false));
+            ]]></Code>
+        </Task>
+    </UsingTask>
+
+</Project>

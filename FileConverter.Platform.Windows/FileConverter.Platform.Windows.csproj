@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Everything that only exists on Windows: Word automation, the registry, Explorer's sort order,
+         the Windows builds of FFmpeg/7-Zip/PDFium. Referenced by the app only when building for Windows. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>FileConverter.Platform</RootNamespace>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\FileConverter.Core\FileConverter.Core.csproj" />
+        <PackageReference Include="bblanchon.PDFium.Win32" Version="157.0.8086" />
+    </ItemGroup>
+
+</Project>

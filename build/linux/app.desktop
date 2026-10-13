@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=@DisplayName@
+GenericName=File Converter
+Comment=@Summary@
+Exec=@UnixName@ %F
+Icon=@UnixName@
+Terminal=false
+Categories=Utility;AudioVideo;Graphics;Office;
+Keywords=convert;converter;image;video;audio;pdf;archive;
+StartupWMClass=@ProgramName@
+MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/tiff;image/heic;image/x-icon;audio/mpeg;audio/x-wav;audio/flac;audio/aac;audio/ogg;audio/mp4;audio/x-ms-wma;audio/opus;video/mp4;video/x-matroska;video/x-msvideo;video/webm;video/quicktime;video/x-ms-wmv;video/x-flv;video/mp2t;text/plain;text/markdown;application/pdf;application/msword;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/zip;application/x-7z-compressed;application/vnd.rar;application/x-tar;application/gzip;application/x-bzip2;

@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The conversion engines. No UI and no operating-system specifics: everything that differs
+         between Windows and Linux goes through Platform/IPlatform. -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- Q16: 16 bits per channel, so 16-bit PNG/TIFF and 10-bit HEIC sources are not cut down to 8 bits -->
+        <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="15.0.0" />
+        <!-- Writes PNG files several times faster than ImageMagick does (see Converters/PixelEncoder.cs).
+             The same version the window is drawn with, so the downloads gain no file from it. -->
+        <PackageReference Include="SkiaSharp" Version="3.119.4" />
+        <PackageReference Include="SharpCompress" Version="1.0.0" />
+        <PackageReference Include="PdfPig" Version="0.1.16" />
+        <PackageReference Include="QuestPDF" Version="2026.9.1" />
+        <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="FileConverter.Tests" />
+    </ItemGroup>
+
+    <!--
+        The app's name and version as constants for the code (AppInfo.DisplayName …), written out
+        from Directory.Build.props — the one place they are said.
+    -->
+    <Target Name="FcWriteAppInfo" BeforeTargets="BeforeCompile;CoreCompile">
+        <PropertyGroup>
+            <FcAppInfoFile>$(IntermediateOutputPath)AppInfo.g.cs</FcAppInfoFile>
+            <FcAppInfoText><![CDATA[// Written by the build from Directory.Build.props. To change a name, change it there.
+namespace FileConverter.Core;
+
+/// <summary>What the app is called, and its version.</summary>
+public static class AppInfo
+{
+    /// <summary>The name as people read it.</summary>
+    public const string DisplayName = "$(FcDisplayName)";
+
+    /// <summary>The name as one word: the programs, the downloads, the data folder on Windows.</summary>
+    public const string ProgramName = "$(FcProgramName)";
+
+    /// <summary>The name the way Linux writes names: the command, the menu entry, the folders.</summary>
+    public const string UnixName = "$(FcUnixName)";
+
+    /// <summary>One line on what the app does.</summary>
+    public const string Summary = "$(FcSummary)";
+
+    public const string Version = "$(Version)";
+}]]></FcAppInfoText>
+        </PropertyGroup>
+        <WriteLinesToFile File="$(FcAppInfoFile)" Lines="$([MSBuild]::Escape('$(FcAppInfoText)'))" Overwrite="true" WriteOnlyWhenDifferent="true" />
+        <ItemGroup>
+            <Compile Include="$(FcAppInfoFile)" />
+            <FileWrites Include="$(FcAppInfoFile)" />
+        </ItemGroup>
+    </Target>
+
+</Project>

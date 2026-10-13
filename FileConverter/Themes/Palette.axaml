@@ -1,0 +1,82 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- The app's own colours, in a dark and a light version. Controls pick them up with
+         {DynamicResource …}, so switching the theme recolours everything at once. -->
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="BgBrush" Color="#121418" />
+            <SolidColorBrush x:Key="SurfaceBrush" Color="#1B1E25" />
+            <SolidColorBrush x:Key="Surface2Brush" Color="#232833" />
+            <SolidColorBrush x:Key="Surface2HoverBrush" Color="#2B3140" />
+            <SolidColorBrush x:Key="Surface2PressedBrush" Color="#242A37" />
+            <SolidColorBrush x:Key="Border1Brush" Color="#2E3340" />
+            <SolidColorBrush x:Key="BorderHoverBrush" Color="#44507F" />
+            <SolidColorBrush x:Key="TextBrush" Color="#E8EAF0" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#98A1B3" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#4F8CFF" />
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="#6B9FFF" />
+            <SolidColorBrush x:Key="AccentPressedBrush" Color="#3F79E8" />
+            <SolidColorBrush x:Key="OnAccentBrush" Color="#0B1220" />
+            <SolidColorBrush x:Key="SelectionBrush" Color="#1E2A44" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="#3FB68B" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="#E5595F" />
+            <SolidColorBrush x:Key="WarnBrush" Color="#E0A23C" />
+            <SolidColorBrush x:Key="SetupBannerBrush" Color="#242038" />
+            <SolidColorBrush x:Key="SetupBannerBorderBrush" Color="#473E6B" />
+            <SolidColorBrush x:Key="InfoBannerBrush" Color="#1A2638" />
+            <SolidColorBrush x:Key="InfoBannerBorderBrush" Color="#2E4A74" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="BgBrush" Color="#F3F4F7" />
+            <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="Surface2Brush" Color="#F0F2F6" />
+            <SolidColorBrush x:Key="Surface2HoverBrush" Color="#E6E9F0" />
+            <SolidColorBrush x:Key="Surface2PressedBrush" Color="#DCE0EA" />
+            <SolidColorBrush x:Key="Border1Brush" Color="#D5D9E2" />
+            <SolidColorBrush x:Key="BorderHoverBrush" Color="#9AA8D8" />
+            <SolidColorBrush x:Key="TextBrush" Color="#1A1D24" />
+            <SolidColorBrush x:Key="TextDimBrush" Color="#5F6878" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#2F6FE0" />
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="#4480EA" />
+            <SolidColorBrush x:Key="AccentPressedBrush" Color="#255FC8" />
+            <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SelectionBrush" Color="#E3ECFD" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="#1E8E66" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="#C93A40" />
+            <SolidColorBrush x:Key="WarnBrush" Color="#B5791A" />
+            <SolidColorBrush x:Key="SetupBannerBrush" Color="#F0ECFB" />
+            <SolidColorBrush x:Key="SetupBannerBorderBrush" Color="#C9BEEA" />
+            <SolidColorBrush x:Key="InfoBannerBrush" Color="#EAF1FD" />
+            <SolidColorBrush x:Key="InfoBannerBorderBrush" Color="#BCD1F5" />
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- category chips: the same in both themes (dark text on a saturated colour) -->
+    <SolidColorBrush x:Key="CatImageBrush" Color="#3FB68B" />
+    <SolidColorBrush x:Key="CatAudioBrush" Color="#B07CE8" />
+    <SolidColorBrush x:Key="CatVideoBrush" Color="#4F8CFF" />
+    <SolidColorBrush x:Key="CatDocumentBrush" Color="#E0A23C" />
+    <SolidColorBrush x:Key="CatArchiveBrush" Color="#E06C9F" />
+    <SolidColorBrush x:Key="CatOtherBrush" Color="#98A1B3" />
+    <SolidColorBrush x:Key="ChipTextBrush" Color="#0B1220" />
+
+    <!-- the logo as the window's header draws it: the 32-pixel design of build/MakeIcon.cs, which prints these -->
+    <LinearGradientBrush x:Key="LogoTileBrush" StartPoint="50%,0%" EndPoint="50%,100%">
+        <GradientStop Offset="0" Color="#5E9BFF" />
+        <GradientStop Offset="1" Color="#2E60DC" />
+    </LinearGradientBrush>
+    <StreamGeometry x:Key="LogoArrowOut">M8,10.5 H24 M19.84,6.34 L24,10.5 L19.84,14.66</StreamGeometry>
+    <StreamGeometry x:Key="LogoArrowBack">M24,21.5 H8 M12.16,17.34 L8,21.5 L12.16,25.66</StreamGeometry>
+
+    <!-- small line icons -->
+    <StreamGeometry x:Key="IconClose">M 1,1 L 11,11 M 11,1 L 1,11</StreamGeometry>
+    <StreamGeometry x:Key="IconFolder">M 1,2.5 H 5 L 6.5,4.5 H 13 V 11.5 H 1 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconOpen">M 6,2 H 2 V 12 H 12 V 8 M 8.5,2 H 12 V 5.5 M 12,2 L 6.5,7.5</StreamGeometry>
+    <StreamGeometry x:Key="IconSliders">M 1,3 H 13 M 1,7 H 13 M 1,11 H 13 M 4.5,1.5 V 4.5 M 9.5,5.5 V 8.5 M 6,9.5 V 12.5</StreamGeometry>
+    <StreamGeometry x:Key="IconPlus">M 6,1 V 11 M 1,6 H 11</StreamGeometry>
+
+</ResourceDictionary>
