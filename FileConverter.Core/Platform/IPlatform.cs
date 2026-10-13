@@ -90,6 +90,33 @@ public interface IPlatform
 
     /// <summary>Downloads a 7-Zip console build into <paramref name="toolsDirectory"/>.</summary>
     Task InstallSevenZipAsync(string toolsDirectory, CancellationToken ct);
+
+    /// <summary>The program a person starts, as a download names it ("MasterFileConverter.exe", "masterfileconverter").</summary>
+    string LauncherName { get; }
+
+    /// <summary>
+    /// How this copy of the app can be replaced by a newer version, or null when it cannot replace
+    /// itself: a build run out of its build folder, or a folder it may not write to.
+    /// </summary>
+    UpdateRoute? UpdateRoute { get; }
+
+    /// <summary>How the installer of a newer version is run without its pages (Windows).</summary>
+    /// <param name="restart">Start the app again when it is through.</param>
+    /// <param name="unattended">Nobody is watching: it keeps even its error messages to itself.</param>
+    ProcessStartInfo InstallerCommand(string installer, bool restart, bool unattended);
+
+    /// <summary>
+    /// Called by a newer version once it has put itself into <paramref name="folder"/>: whatever
+    /// else an installation there consists of — on Linux the menu entry, the icons and the command.
+    /// </summary>
+    void AfterUpdate(string folder);
+
+    /// <summary>
+    /// Takes an installed copy off the computer again, where the app does that itself (Linux; on
+    /// Windows it is "Installed apps"). False when this copy was never installed.
+    /// </summary>
+    /// <param name="keepSettings">Leave the settings for a later installation.</param>
+    bool Uninstall(bool keepSettings);
 }
 
 /// <summary>High-fidelity document conversion through an installed office program.</summary>
@@ -153,4 +180,27 @@ public abstract class PlatformBase : IPlatform
     public abstract string FfmpegDownloadSummary { get; }
     public abstract Task InstallFfmpegAsync(string toolsDirectory, IProgress<double>? progress, CancellationToken ct);
     public abstract Task InstallSevenZipAsync(string toolsDirectory, CancellationToken ct);
+
+    public abstract string LauncherName { get; }
+    public virtual UpdateRoute? UpdateRoute => null;
+
+    public virtual ProcessStartInfo InstallerCommand(string installer, bool restart, bool unattended) =>
+        throw new NotSupportedException("This system has no installer.");
+
+    public virtual void AfterUpdate(string folder) { }
+    public virtual bool Uninstall(bool keepSettings) => false;
+
+    /// <summary>Can files be made in this folder? (Tried, not read from its permissions: those do not tell on every file system.)</summary>
+    protected static bool CanWriteTo(string folder)
+    {
+        try
+        {
+            using (File.Create(Path.Combine(folder, $".write-{Guid.NewGuid():N}.tmp"), 1, FileOptions.DeleteOnClose)) { }
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 }

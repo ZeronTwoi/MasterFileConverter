@@ -17,6 +17,47 @@ public interface IAppHost
 {
     Task<IReadOnlyList<string>> PickFilesAsync();
     Task<string?> PickFolderAsync(string title);
+
+    /// <summary>Closes the window, and with it the app.</summary>
+    void Close();
+}
+
+/// <summary>What the window needs of the updater. (Tests put their own in its place: they neither go online nor replace anything.)</summary>
+public interface IAppUpdates
+{
+    /// <summary>Can this copy of the app replace itself? If not, a new version is a link to the download page.</summary>
+    bool CanUpdate { get; }
+
+    Task<AvailableUpdate?> FindAsync(CancellationToken ct);
+    Task<PreparedUpdate> PrepareAsync(AvailableUpdate update, IProgress<double>? progress, CancellationToken ct);
+    void Start(PreparedUpdate update, bool restart);
+    void Discard();
+}
+
+/// <summary>The updater itself, see <see cref="AppUpdater"/>.</summary>
+internal sealed class AppUpdates : IAppUpdates
+{
+    public bool CanUpdate => AppUpdater.CanUpdate;
+    public Task<AvailableUpdate?> FindAsync(CancellationToken ct) => AppUpdater.FindAsync(ct);
+
+    public Task<PreparedUpdate> PrepareAsync(AvailableUpdate update, IProgress<double>? progress, CancellationToken ct) =>
+        AppUpdater.PrepareAsync(update, progress, ct);
+
+    public void Start(PreparedUpdate update, bool restart) => AppUpdater.Start(update, restart);
+    public void Discard() => AppUpdater.Discard();
+}
+
+/// <summary>Where an update the user asked for has got to.</summary>
+public enum UpdateStage
+{
+    None,
+
+    /// <summary>Being downloaded and checked.</summary>
+    Fetching,
+
+    /// <summary>Fetched; the app has to close for it to be put in place.</summary>
+    Ready,
+    Failed
 }
 
 public partial class MainViewModel : ObservableObject
@@ -267,14 +308,32 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Opens the page the app comes from: its source, its downloads, where to report a problem.</summary>
+    [RelayCommand]
+    private void OpenWebsite()
+    {
+        try
+        {
+            PlatformServices.Current.Open(AppInfo.Website);
+        }
+        catch (Exception ex)
+        {
+            OverallStatus = "Could not open the website: " + ex.Message;
+        }
+    }
+
     // ---------- new versions ----------
     //
     // Nothing here connects anywhere until the user has said yes to being told about new
-    // versions. After a "no" the question is not put again and no connection is ever made for
-    // this; after a "yes" the app looks once at each start — see UpdateCheck.
+    // versions, or asks for a look from the menu. After a "no" the question is not put again and
+    // no connection is made by itself; after a "yes" the app looks once at each start — see
+    // UpdateCheck. A newer version is only ever fetched and installed on a click: see "updating".
 
     /// <summary>How the newest released version is learnt. (Tests put their own answer here: they stay offline.)</summary>
     internal Func<CancellationToken, Task<Version?>> FindLatestVersion { get; set; } = UpdateCheck.FindLatestVersionAsync;
+
+    /// <summary>What fetches a newer version and puts it in place.</summary>
+    internal IAppUpdates Updates { get; set; } = new AppUpdates();
 
     private bool _lookedForUpdate;
 
@@ -282,14 +341,17 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _askAboutUpdates;
 
-    /// <summary>A version newer than this one ("2.4.0"), once this start's look has found one.</summary>
+    /// <summary>A version newer than this one ("2.4.0"), once a look has found one.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(UpdateAvailable))]
     [NotifyPropertyChangedFor(nameof(UpdateText))]
     private string? _newVersion;
 
     public bool UpdateAvailable => NewVersion != null;
-    public string UpdateText => $"Version {NewVersion} is available — open the download page";
+
+    public string UpdateText => Updates.CanUpdate
+        ? $"Version {NewVersion} is available — update now"
+        : $"Version {NewVersion} is available — open the download page";
 
     /// <summary>The user wants to be told about new versions.</summary>
     public bool NotifyAboutUpdates => _settings.NotifyAboutUpdates == true;
@@ -319,7 +381,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(NotifyAboutUpdates));
         Persist();
         if (wanted) _ = LookForUpdateAsync();
-        else NewVersion = null;
+        else if (UpdateStage == UpdateStage.None) NewVersion = null;
     }
 
     private async Task LookForUpdateAsync()
@@ -338,6 +400,36 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>One look, asked for from the menu — also by someone who does not want the app to look by itself.</summary>
+    [RelayCommand]
+    private async Task LookForUpdateNowAsync()
+    {
+        OverallStatus = "Looking for a new version…";
+        Version? latest = null;
+        try
+        {
+            latest = await FindLatestVersion(CancellationToken.None);
+        }
+        catch
+        {
+            // said below
+        }
+
+        if (latest == null)
+        {
+            OverallStatus = "The newest version could not be looked up. Is this computer online?";
+        }
+        else if (UpdateCheck.IsNewer(latest, AppInfo.Version))
+        {
+            NewVersion = latest.ToString();
+            OverallStatus = $"Version {NewVersion} is available.";
+        }
+        else
+        {
+            OverallStatus = $"This is the newest version ({AppInfo.Version}).";
+        }
+    }
+
     [RelayCommand]
     private void OpenDownloadPage()
     {
@@ -350,6 +442,171 @@ public partial class MainViewModel : ObservableObject
             OverallStatus = "Could not open the download page: " + ex.Message;
         }
     }
+
+    // ---------- updating ----------
+    //
+    // One click fetches the new version, checks it and installs it. The app has to close for
+    // that, so it only closes by itself when nothing would be lost: no files in the list, nothing
+    // converting. Otherwise the update waits, ready, for "Restart and update" — or for the app to
+    // be closed, which installs it too.
+
+    private CancellationTokenSource? _updateCts;
+    private PreparedUpdate? _preparedUpdate;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UpdateBannerVisible))]
+    [NotifyPropertyChangedFor(nameof(UpdateFetching))]
+    [NotifyPropertyChangedFor(nameof(UpdateReady))]
+    [NotifyPropertyChangedFor(nameof(UpdateFailed))]
+    private UpdateStage _updateStage;
+
+    [ObservableProperty] private string _updateTitle = "";
+    [ObservableProperty] private string _updateDetail = "";
+    [ObservableProperty] private double _updateProgress;
+
+    public bool UpdateBannerVisible => UpdateStage != UpdateStage.None;
+    public bool UpdateFetching => UpdateStage == UpdateStage.Fetching;
+    public bool UpdateReady => UpdateStage == UpdateStage.Ready;
+    public bool UpdateFailed => UpdateStage == UpdateStage.Failed;
+
+    /// <summary>Closing the app now would lose something: a list of files, a running conversion or download.</summary>
+    private bool HasWorkInHand => HasItems || IsConverting || SetupRunning;
+
+    /// <summary>The warning sign and its menu entry: update — or, for a copy that cannot replace itself, the download page.</summary>
+    [RelayCommand]
+    private async Task UpdateNowAsync()
+    {
+        if (!Updates.CanUpdate)
+        {
+            OpenDownloadPage();
+            return;
+        }
+        if (UpdateStage == UpdateStage.Fetching) return;
+        if (UpdateStage == UpdateStage.Ready)
+        {
+            if (RestartForUpdateCommand.CanExecute(null)) RestartForUpdate();
+            return;
+        }
+
+        var cts = _updateCts = new CancellationTokenSource();
+        UpdateProgress = 0;
+        UpdateTitle = $"Updating to version {NewVersion}";
+        UpdateDetail = "Looking up the download…";
+        UpdateStage = UpdateStage.Fetching;
+        try
+        {
+            var update = await Updates.FindAsync(cts.Token);
+            if (update == null)
+            {
+                UpdateStage = UpdateStage.None;
+                NewVersion = null;
+                OverallStatus = $"This is the newest version ({AppInfo.Version}).";
+                return;
+            }
+
+            UpdateTitle = $"Updating to version {update.Version}";
+            var progress = new Progress<double>(done =>
+            {
+                if (UpdateStage != UpdateStage.Fetching) return;
+                UpdateProgress = done * 100;
+                UpdateDetail = done < 1 ? $"Downloading… {done * 100:0}%" : "Checking the download…";
+            });
+            _preparedUpdate = await Updates.PrepareAsync(update, progress, cts.Token);
+
+            if (HasWorkInHand)
+            {
+                UpdateTitle = $"Version {update.Version} is ready to install";
+                UpdateDetail = "The app restarts for it, and the list of files is not kept. Or finish first: closing the app installs it too.";
+                UpdateStage = UpdateStage.Ready;
+            }
+            else
+            {
+                InstallUpdate(restart: true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStage = UpdateStage.None;
+        }
+        catch (Exception ex)
+        {
+            UpdateFailedBecause(ex.Message);
+        }
+        finally
+        {
+            _updateCts = null;
+            cts.Dispose();
+        }
+    }
+
+    [RelayCommand]
+    private void CancelUpdate() => _updateCts?.Cancel();
+
+    private bool CanRestartForUpdate() => UpdateStage == UpdateStage.Ready && !IsConverting && !SetupRunning;
+
+    [RelayCommand(CanExecute = nameof(CanRestartForUpdate))]
+    private void RestartForUpdate() => InstallUpdate(restart: true);
+
+    /// <summary>Takes the banner away: a failure that has been read, or an update that is not wanted after all.</summary>
+    [RelayCommand]
+    private void DismissUpdate()
+    {
+        if (UpdateStage == UpdateStage.Fetching) return;
+        if (_preparedUpdate != null)
+        {
+            _preparedUpdate = null;
+            Updates.Discard();
+        }
+        UpdateStage = UpdateStage.None;
+    }
+
+    /// <summary>Called as the window closes: an update that is ready goes in now, without starting the app again.</summary>
+    public void InstallPendingUpdate()
+    {
+        if (UpdateStage == UpdateStage.Ready) InstallUpdate(restart: false);
+    }
+
+    private void InstallUpdate(bool restart)
+    {
+        if (_preparedUpdate is not { } update) return;
+        try
+        {
+            Flush();
+            Updates.Start(update, restart);
+            _preparedUpdate = null;
+            UpdateStage = UpdateStage.None;
+            if (restart) Host?.Close();
+        }
+        catch (Exception ex)
+        {
+            UpdateFailedBecause(ex.Message);
+        }
+    }
+
+    private void UpdateFailedBecause(string reason)
+    {
+        if (_preparedUpdate != null)
+        {
+            _preparedUpdate = null;
+            Updates.Discard();
+        }
+        UpdateTitle = "The update could not be installed";
+        UpdateDetail = reason;
+        UpdateStage = UpdateStage.Failed;
+    }
+
+    /// <summary>
+    /// Called once the window is up: says so when the app has just been updated, or why the last
+    /// update could not be put in place.
+    /// </summary>
+    public void AfterStart(string? updatedTo, string? updateFailure)
+    {
+        if (updateFailure != null) UpdateFailedBecause(updateFailure);
+        else if (updatedTo != null) OverallStatus = $"Updated to version {updatedTo}.";
+    }
+
+    partial void OnUpdateStageChanged(UpdateStage value) => RestartForUpdateCommand.NotifyCanExecuteChanged();
+    partial void OnSetupRunningChanged(bool value) => RestartForUpdateCommand.NotifyCanExecuteChanged();
 
     // ---------- detailed settings ----------
 
@@ -1096,6 +1353,18 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void CancelAll() => _cts?.Cancel();
 
+    /// <summary>
+    /// Stops the running batch and waits until the engines it started have ended and what they
+    /// had half written is removed — so that closing the window leaves nothing running and nothing
+    /// lying about. (Cancelling ends each engine's process at once; the wait is for the tidying up.)
+    /// </summary>
+    public async Task StopConvertingAsync()
+    {
+        _cts?.Cancel();
+        if (ConvertAllCommand.ExecutionTask is { } batch)
+            await Task.WhenAny(batch, Task.Delay(TimeSpan.FromSeconds(15)));
+    }
+
     [RelayCommand]
     private async Task SetupToolsAsync()
     {
@@ -1133,5 +1402,9 @@ public partial class MainViewModel : ObservableObject
         await DetectGpuAsync(); // FFmpeg may have just arrived
     }
 
-    partial void OnIsConvertingChanged(bool value) => ConvertAllCommand.NotifyCanExecuteChanged();
+    partial void OnIsConvertingChanged(bool value)
+    {
+        ConvertAllCommand.NotifyCanExecuteChanged();
+        RestartForUpdateCommand.NotifyCanExecuteChanged();
+    }
 }

@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using FileConverter.Core;
 using FileConverter.Core.Platform;
 using FileConverter.ViewModels;
 using FileConverter.Views;
@@ -48,9 +49,31 @@ public partial class App : Application
 
             // new versions: the question the first time; afterwards one look per start, if wanted
             viewModel.BeginUpdateNotices();
+            // just updated — or the last update did not go through, and why
+            var (updatedTo, failure) = AppUpdater.TakeOutcome();
+            viewModel.AfterStart(updatedTo, failure);
+            _ = TidyUpAsync();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// A little after the start, away from the window's thread: removes what an update left in the
+    /// data folder, and work files of a run that ended without tidying up (a crash, a power cut).
+    /// </summary>
+    private static async Task TidyUpAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+            AppUpdater.RemoveLeftovers();
+            WorkFiles.RemoveLeftovers(TimeSpan.FromDays(3));
+        }
+        catch
+        {
+            // tidying up is a courtesy; the next start tries again
+        }
     }
 
     /// <summary>"dark", "light", or "system" to follow the desktop's setting.</summary>

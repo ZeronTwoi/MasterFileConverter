@@ -256,4 +256,55 @@ internal sealed partial class WindowsPlatform : PlatformBase
             try { Directory.Delete(unpacked, recursive: true); } catch { /* best effort */ }
         }
     }
+
+    // ---------- updating ----------
+
+    public override string LauncherName => AppInfo.ProgramName + ".exe";
+
+    /// <summary>
+    /// A copy put there by the installer is updated by the newer version's installer, which also
+    /// keeps "Installed apps" and the uninstaller right; a folder unpacked from the .zip by the .zip.
+    /// </summary>
+    public override UpdateRoute? UpdateRoute
+    {
+        get
+        {
+            if (AppUpdater.FolderOfThisCopy(LauncherName) is not { } folder) return null;
+            if (IsInstalledIn(folder)) return new UpdateRoute(folder, "-win-x64-setup.exe", UpdateKind.Installer);
+            return CanWriteTo(folder) ? new UpdateRoute(folder, "-win-x64.zip", UpdateKind.Archive) : null;
+        }
+    }
+
+    /// <summary>Does the installer's entry under "Installed apps" name this folder?</summary>
+    private static bool IsInstalledIn(string folder)
+    {
+        try
+        {
+            using var entry = Registry.CurrentUser.OpenSubKey(
+                $@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{{{AppInfo.WindowsAppId}}}_is1");
+            return entry?.GetValue("InstallLocation") is string location &&
+                   string.Equals(Path.TrimEndingDirectorySeparator(location), Path.TrimEndingDirectorySeparator(folder),
+                       StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The installer's progress shows; its pages and questions do not — but if it cannot install,
+    /// it says why, unless nobody is watching. "/FROMAPP" makes it wait for the app to close before
+    /// it touches a file, "/RELAUNCH" start the app again at the end: both are the installer
+    /// script's own (build/windows/installer.iss).
+    /// </summary>
+    public override ProcessStartInfo InstallerCommand(string installer, bool restart, bool unattended)
+    {
+        var command = new ProcessStartInfo(installer) { UseShellExecute = false };
+        foreach (var argument in new[] { "/SILENT", "/NOCANCEL", "/NORESTART", "/CLOSEAPPLICATIONS", "/FROMAPP" })
+            command.ArgumentList.Add(argument);
+        if (unattended) command.ArgumentList.Add("/SUPPRESSMSGBOXES");
+        if (restart) command.ArgumentList.Add("/RELAUNCH");
+        return command;
+    }
 }

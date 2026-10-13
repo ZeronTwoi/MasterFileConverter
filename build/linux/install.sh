@@ -1,7 +1,9 @@
 #!/bin/sh
 # Installs @DisplayName@ for the current user: no root needed, nothing outside your home folder.
-#   ./install.sh            install (or update)
-#   ./install.sh --remove   uninstall (your settings and downloaded engines are kept)
+#   ./install.sh                            install (or update)
+#   ./install.sh --remove                   uninstall: the app, the engines it downloaded, its settings
+#   ./install.sh --remove --keep-settings   uninstall, but leave the settings for a later installation
+# Once installed, "@UnixName@ --uninstall" does the same from anywhere.
 #@ This is the script as the repository keeps it: the names between @ signs are filled in, and
 #@ lines like these two left out, when a download is built (FcArrangeDownload in FileConverter.csproj).
 set -e
@@ -28,7 +30,19 @@ if [ "$1" = "--remove" ]; then
     rm -rf "$home"
     remove_links "@UnixName@"
     refresh_menu
-    echo "@DisplayName@ was removed. Settings ($config/@UnixName@) and engines ($data/@UnixName@) were left in place."
+    # what the app made itself: the engines it downloaded and what it measured about this machine,
+    # and work files of a conversion that ended without tidying up (they carry the app's name)
+    rm -rf "$data/@UnixName@"
+    rm -rf "${TMPDIR:-/tmp}"/@ProgramName@-*
+    if [ "$2" = "--keep-settings" ] && [ -f "$config/@UnixName@/settings.json" ]; then
+        for entry in "$config/@UnixName@"/* "$config/@UnixName@"/.[!.]*; do
+            [ "$(basename "$entry")" = "settings.json" ] || rm -rf "$entry"
+        done
+        echo "@DisplayName@ was removed, with the engines it had downloaded. Your settings were kept: $config/@UnixName@/settings.json"
+    else
+        rm -rf "$config/@UnixName@"
+        echo "@DisplayName@ was removed, with the engines it had downloaded and its settings."
+    fi
     exit 0
 fi
 
@@ -54,6 +68,7 @@ sed "s|^Exec=@UnixName@|Exec=$bin/@UnixName@|" "$home/app/share/applications/@Un
 refresh_menu
 
 echo "@DisplayName@ is installed. Start it from your applications menu, or run: @UnixName@"
+echo "To remove it again: $home/install.sh --remove"
 case ":$PATH:" in
     *":$bin:"*) ;;
     *) echo "Note: $bin is not on your PATH, so in a terminal use the full path: $bin/@UnixName@" ;;

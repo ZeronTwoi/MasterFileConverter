@@ -47,7 +47,7 @@ public static class DocumentConversion
                         // The office engines are handed a docx made here rather than the text file:
                         // its encoding has been worked out already, and they would only guess at it.
                         var text = TextFiles.Read(input);
-                        var staged = Path.Combine(Path.GetTempPath(), $"fc-text-{Guid.NewGuid():N}.docx");
+                        var staged = WorkFiles.NewPath("text", ".docx");
                         try
                         {
                             TextToDocx(text, staged);
@@ -175,7 +175,7 @@ public static class DocumentConversion
         var soffice = ToolLocator.LibreOfficePath;
         if (soffice == null) return false;
 
-        var outDir = Path.Combine(Path.GetTempPath(), $"fc-lo-{Guid.NewGuid():N}");
+        var outDir = WorkFiles.NewPath("office");
         Directory.CreateDirectory(outDir);
         // A profile of its own, so that a LibreOffice the user has open doesn't block headless mode.
         using var profile = OfficeProfile.Rent(Path.Combine(outDir, "profile"));

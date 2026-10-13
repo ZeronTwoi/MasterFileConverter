@@ -39,7 +39,7 @@
                               PlaceholderText="format"
                               ToolTip.Tip="Pick one target format for every compatible file at once." />
                 </StackPanel>
-                <Button Command="{Binding AddFilesCommand}">
+                <Button Command="{Binding AddFilesCommand}" AutomationProperties.Name="Add files">
                     <!-- drawn, not typed: a "＋" character is missing from some fonts -->
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Path Data="{StaticResource IconPlus}" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.5"
@@ -58,7 +58,7 @@
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
-                <ToggleButton IsChecked="{Binding DetailedSettingsOpen}"
+                <ToggleButton IsChecked="{Binding DetailedSettingsOpen}" AutomationProperties.Name="Detailed settings"
                               ToolTip.Tip="Show precise settings for each conversion — quality numbers, sizes, formats, bitrates — instead of only the simple File size slider. They are saved per target format.">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Path Data="{StaticResource IconSliders}" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4"
@@ -78,7 +78,7 @@
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="Tell you here when a new version is out?" />
                     <TextBlock Classes="dim" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"
-                               Text="With Yes, the app asks GitHub for the newest version's number once each time it starts — nothing about you or your files is sent, and nothing is downloaded. With No, it never connects for this and does not ask again." />
+                               Text="With Yes, the app asks GitHub for the newest version's number once each time it starts — nothing about you or your files is sent, and nothing is downloaded or installed unless you then choose to update. With No, it never connects by itself and does not ask again." />
                 </StackPanel>
                 <Button Grid.Column="1" Classes="accent" Content="Yes" VerticalAlignment="Center" Margin="14,0,0,0" MinWidth="64"
                         HorizontalContentAlignment="Center"
@@ -87,6 +87,35 @@
                         HorizontalContentAlignment="Center"
                         Command="{Binding AnswerUpdateQuestionCommand}" CommandParameter="no"
                         ToolTip.Tip="You can still switch it on later, in the ··· menu at the bottom right." />
+            </Grid>
+        </Border>
+
+        <!-- ═══ an update the user asked for: being fetched, ready to go in, or failed ═══ -->
+        <Border Background="{DynamicResource InfoBannerBrush}"
+                BorderBrush="{DynamicResource InfoBannerBorderBrush}" BorderThickness="1" CornerRadius="8"
+                Padding="14,8" Margin="0,0,0,12" IsVisible="{Binding UpdateBannerVisible}">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding UpdateTitle}" />
+                    <TextBlock Classes="dim" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap" Text="{Binding UpdateDetail}"
+                               IsVisible="{Binding UpdateDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <ProgressBar Value="{Binding UpdateProgress}" Maximum="100" Margin="0,8,0,2" Height="4"
+                                 IsVisible="{Binding UpdateFetching}" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="Cancel" VerticalAlignment="Center" Margin="14,0,0,0"
+                        Command="{Binding CancelUpdateCommand}" IsVisible="{Binding UpdateFetching}" />
+                <Button Grid.Column="1" Classes="accent" Content="Restart and update" VerticalAlignment="Center" Margin="14,0,0,0"
+                        Command="{Binding RestartForUpdateCommand}" IsVisible="{Binding UpdateReady}"
+                        ToolTip.ShowOnDisabled="True"
+                        ToolTip.Tip="Closes the app, installs the new version and starts it again. Not while files are being converted." />
+                <Button Grid.Column="1" Content="Open the download page" VerticalAlignment="Center" Margin="14,0,0,0"
+                        Command="{Binding OpenDownloadPageCommand}" IsVisible="{Binding UpdateFailed}" />
+                <Button Grid.Column="2" Classes="icon" Height="32" Width="30" VerticalAlignment="Center" Margin="6,0,0,0"
+                        Command="{Binding DismissUpdateCommand}" IsVisible="{Binding !UpdateFetching}"
+                        ToolTip.Tip="Close this note. An update that was fetched is not installed."
+                        AutomationProperties.Name="Close this note">
+                    <Path Data="{StaticResource IconClose}" />
+                </Button>
             </Grid>
         </Border>
 
@@ -180,16 +209,19 @@
                                 <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Spacing="2"
                                             HorizontalAlignment="Right">
                                     <Button Classes="icon" IsVisible="{Binding HasResult}" ToolTip.Tip="Open the result"
+                                            AutomationProperties.Name="Open the result"
                                             Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenResultCommand}"
                                             CommandParameter="{Binding}">
                                         <Path Data="{StaticResource IconOpen}" />
                                     </Button>
                                     <Button Classes="icon" IsVisible="{Binding HasResult}" ToolTip.Tip="Show the result in its folder"
+                                            AutomationProperties.Name="Show the result in its folder"
                                             Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).ShowResultInFolderCommand}"
                                             CommandParameter="{Binding}">
                                         <Path Data="{StaticResource IconFolder}" />
                                     </Button>
                                     <Button Classes="icon" ToolTip.Tip="Remove from the list"
+                                            AutomationProperties.Name="Remove from the list"
                                             Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).RemoveItemCommand}"
                                             CommandParameter="{Binding}">
                                         <Path Data="{StaticResource IconClose}" />
@@ -238,7 +270,7 @@
                             </ComboBox>
                             <Button Grid.Column="1" Classes="icon" Height="32" Width="30" Margin="4,0,0,0"
                                     Command="{Binding DeletePresetCommand}" IsVisible="{Binding CanDeletePreset}"
-                                    ToolTip.Tip="Delete this preset">
+                                    ToolTip.Tip="Delete this preset" AutomationProperties.Name="Delete this preset">
                                 <Path Data="{StaticResource IconClose}" />
                             </Button>
                         </Grid>
@@ -368,7 +400,8 @@
                                 <Button Content="Choose…" Padding="12,6" Height="32" Command="{Binding ChooseOutputCommand}" />
                                 <Button Classes="icon" Height="32" Width="30" Command="{Binding ResetOutputCommand}"
                                         IsVisible="{Binding HasCustomOutputDirectory}"
-                                        ToolTip.Tip="Go back to saving each result next to its source file.">
+                                        ToolTip.Tip="Go back to saving each result next to its source file."
+                                        AutomationProperties.Name="Save next to each source file">
                                     <Path Data="{StaticResource IconClose}" />
                                 </Button>
                             </StackPanel>
@@ -427,10 +460,12 @@
                 <TextBlock Classes="dim" Text="{Binding VersionText}" FontSize="11.5" VerticalAlignment="Center" />
                 <!-- a newer version is out -->
                 <Button Classes="icon" Width="24" Height="22" Padding="0" IsVisible="{Binding UpdateAvailable}"
-                        Command="{Binding OpenDownloadPageCommand}" ToolTip.Tip="{Binding UpdateText}">
+                        Command="{Binding UpdateNowCommand}" ToolTip.Tip="{Binding UpdateText}"
+                        AutomationProperties.Name="{Binding UpdateText}">
                     <Path Data="{StaticResource IconWarning}" Stroke="{DynamicResource WarnBrush}" Width="15" Height="15" />
                 </Button>
-                <Button Classes="icon" Width="28" Height="22" Padding="0" ToolTip.Tip="Appearance, new versions, settings file and licences">
+                <Button Classes="icon" Width="28" Height="22" Padding="0" ToolTip.Tip="Appearance, new versions, settings file and licences"
+                        AutomationProperties.Name="Menu">
                     <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
                         <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDimBrush}" />
@@ -438,7 +473,7 @@
                     </StackPanel>
                     <Button.Flyout>
                         <MenuFlyout Placement="TopEdgeAlignedRight">
-                            <MenuItem Header="{Binding UpdateText}" Command="{Binding OpenDownloadPageCommand}"
+                            <MenuItem Header="{Binding UpdateText}" Command="{Binding UpdateNowCommand}"
                                       IsVisible="{Binding UpdateAvailable}">
                                 <MenuItem.Icon>
                                     <Path Data="{StaticResource IconWarning}" Stroke="{DynamicResource WarnBrush}" StrokeThickness="1.4"
@@ -456,9 +491,14 @@
                             <MenuItem Header="Tell me about new versions" ToggleType="CheckBox"
                                       IsChecked="{Binding NotifyAboutUpdates, Mode=OneWay}"
                                       Command="{Binding ToggleUpdateNoticesCommand}"
-                                      ToolTip.Tip="When ticked, the app asks GitHub for the newest version's number once each time it starts, and shows a warning sign down here when there is one. Nothing about you or your files is sent. When not ticked, it never connects for this." />
+                                      ToolTip.Tip="When ticked, the app asks GitHub for the newest version's number once each time it starts, and shows a warning sign down here when there is one. Nothing about you or your files is sent, and nothing is installed unless you click the sign. When not ticked, it never connects by itself." />
+                            <MenuItem Header="Look for a new version now" Command="{Binding LookForUpdateNowCommand}"
+                                      ToolTip.Tip="One look, now: asks GitHub for the newest version's number." />
+                            <Separator />
                             <MenuItem Header="Open the settings folder" Command="{Binding OpenSettingsFolderCommand}" />
                             <MenuItem Header="Licences" Command="{Binding OpenLicencesCommand}" />
+                            <MenuItem Header="Website and source code" Command="{Binding OpenWebsiteCommand}"
+                                      ToolTip.Tip="{x:Static core:AppInfo.Website}" />
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>

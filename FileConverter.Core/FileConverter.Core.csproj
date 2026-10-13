@@ -53,6 +53,12 @@ public static class AppInfo
     /// <summary>Where the app lives: its source and, under /releases/latest, its newest version.</summary>
     public const string Website = "$(FcWebsite)";
 
+    /// <summary>The address that answers with the newest release and its files (GitHub's API).</summary>
+    public const string ReleaseFeed = "$(FcReleaseFeed)";
+
+    /// <summary>What Windows knows an installation by: the installer's AppId.</summary>
+    public const string WindowsAppId = "$(FcWindowsAppId)";
+
     public const string Version = "$(Version)";
 }]]></FcAppInfoText>
         </PropertyGroup>

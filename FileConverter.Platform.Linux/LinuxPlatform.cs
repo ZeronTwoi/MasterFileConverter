@@ -350,4 +350,60 @@ internal sealed partial class LinuxPlatform : PlatformBase
         }
         return found;
     }
+
+    // ---------- updating and uninstalling ----------
+
+    public override string LauncherName => AppInfo.UnixName;
+
+    /// <summary>The download, unpacked over the copy that is here — installed by install.sh or run where it was unpacked.</summary>
+    public override UpdateRoute? UpdateRoute =>
+        AppUpdater.FolderOfThisCopy(LauncherName) is { } folder && CanWriteTo(folder)
+            ? new UpdateRoute(folder, "-linux-x64.tar.gz", UpdateKind.Archive)
+            : null;
+
+    /// <summary>Where install.sh puts the app.</summary>
+    private static string InstalledFolder =>
+        Path.Combine(Environment.GetEnvironmentVariable("HOME") ?? "/", ".local", "lib", AppInfo.UnixName);
+
+    private static bool IsInstalledFolder(string folder) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(folder), InstalledFolder, StringComparison.Ordinal);
+
+    /// <summary>An installed copy has a menu entry, icons and a command besides its folder: the new version's script renews them.</summary>
+    public override void AfterUpdate(string folder)
+    {
+        if (IsInstalledFolder(folder)) RunInstallScript(folder, quiet: true);
+    }
+
+    public override bool Uninstall(bool keepSettings)
+    {
+        if (AppUpdater.FolderOfThisCopy(LauncherName) is not { } folder || !IsInstalledFolder(folder)) return false;
+        // the script removes the folder this program runs from; Linux lets a running program finish regardless
+        return keepSettings
+            ? RunInstallScript(folder, quiet: false, "--remove", "--keep-settings")
+            : RunInstallScript(folder, quiet: false, "--remove");
+    }
+
+    private static bool RunInstallScript(string folder, bool quiet, params string[] arguments)
+    {
+        var script = new ProcessStartInfo("/bin/sh")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = quiet,
+            RedirectStandardError = quiet,
+            WorkingDirectory = "/"
+        };
+        script.ArgumentList.Add(Path.Combine(folder, "install.sh"));
+        foreach (var argument in arguments) script.ArgumentList.Add(argument);
+
+        using var process = Process.Start(script);
+        if (process == null) return false;
+        if (quiet)
+        {
+            process.OutputDataReceived += (_, _) => { };
+            process.ErrorDataReceived += (_, _) => { };
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+        }
+        return process.WaitForExit(60_000) && process.ExitCode == 0;
+    }
 }

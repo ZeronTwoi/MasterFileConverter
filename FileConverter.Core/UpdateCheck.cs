@@ -13,6 +13,9 @@ namespace FileConverter.Core;
 /// "…/releases/tag/v2.3.0". The version is read from that address; the redirect is not followed
 /// and nothing is downloaded. What the server learns is what any request tells it: the
 /// computer's internet address and the app's name.
+///
+/// Fetching and installing a newer version is another matter, and only ever happens on a click:
+/// see <see cref="AppUpdater"/>.
 /// </summary>
 public static class UpdateCheck
 {
@@ -64,6 +67,14 @@ public static class UpdateCheck
     {
         if (address == null) return null;
         var match = Regex.Match(address, @"/releases/tag/v?(\d+(?:\.\d+){1,3})(?:[-+][^/?#]*)?/?$");
+        return match.Success && Version.TryParse(match.Groups[1].Value, out var version) ? version : null;
+    }
+
+    /// <summary>The version a release's tag names: "v2.3.0" → 2.3.0.</summary>
+    internal static Version? VersionInTag(string? tag)
+    {
+        if (tag == null) return null;
+        var match = Regex.Match(tag, @"^v?(\d+(?:\.\d+){1,3})(?:[-+].*)?$");
         return match.Success && Version.TryParse(match.Groups[1].Value, out var version) ? version : null;
     }
 

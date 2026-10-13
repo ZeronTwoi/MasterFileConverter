@@ -18,6 +18,11 @@ internal static class Program
     public static int Main(string[] args)
     {
         EnsureCurrentDirectory();
+
+        // a newer version, started by the one it replaces: it only moves in, then leaves
+        if (args.Length > 0 && args[0] == AppUpdater.ApplyCommand)
+            return AppUpdater.ApplyStaged(HostPlatform.Create(), args);
+
         Engines.Initialize(HostPlatform.Create(), SelfCommand());
 
         if (StartedAsCommandLine || CliRunner.Handles(args))

@@ -21,13 +21,26 @@ ones: the windowing backend (Win32 / X11), the platform code and every native li
 chosen per system when the download is built.
 
 **The Windows installer** installs for the current user only (no administrator rights), by
-default into `%LOCALAPPDATA%\Programs\Master File Converter`. Its pages show the licence, ask
-where to install and what to add — a desktop shortcut, an entry in the "Send to" menu (which
-hands a selection of files to one window), and the app under "Open with" for the file types it
-reads, without making it the default for any — and at the end offer to start the app. It always
-adds a Start menu entry and an entry under "Installed apps" with an uninstaller. It follows
-Windows' light or dark mode, and an update remembers the choices made before. Uninstalling asks
-whether settings and downloaded engines should go too.
+default into `%LOCALAPPDATA%\Programs\Master File Converter`. Its first page says what it puts
+on the computer and what not; the next ones show the licence and ask where to install and what
+to add — each a choice: a Start menu shortcut, a desktop shortcut, an entry in the "Send to" menu
+(which hands a selection of files to one window), and the app under "Open with" for the file
+types it reads, without making it the default for any. At the end it offers to start the app.
+It always adds an entry under "Installed apps" with an uninstaller. It follows Windows' light or
+dark mode, and an update remembers the choices made before. If the app is open, the installer
+says so and closes it before replacing it. It installs nothing else: no other program, no
+service, nothing that starts with Windows.
+
+**Uninstalling** (*Settings → Apps → Installed apps*, or the same list in the Control Panel)
+removes everything the installer and the app put on the computer: the program folder, the
+shortcuts it made and a pin on the taskbar, its entries in the registry ("Installed apps",
+"Open with", the name Win+R finds it by), the data folder with the downloaded engines, what was
+measured about the PC, logs and a fetched update, and work files in the temp folder. It asks one
+thing — whether the settings and saved presets should go too or stay for a later installation;
+run without questions (`unins000.exe /VERYSILENT`) it removes them, unless `/KEEPSETTINGS` is
+given. If the app is still open it asks for it to be closed first, since a running program's
+files could not be removed. What Windows itself notes about any program — that it was used, or
+chosen once under "Open with" — is Windows' own and stays.
 
 An unpacked folder shows only what you start — `MasterFileConverter.exe` (and
 `MasterFileConverter-cli.exe` for scripts, see [Command line](#command-line)) on Windows,
@@ -37,8 +50,12 @@ An unpacked folder shows only what you start — `MasterFileConverter.exe` (and
 On Linux, `./install.sh` installs for the current user only (no root): the app goes to
 `~/.local/lib/masterfileconverter`, a `masterfileconverter` command to `~/.local/bin`, and an
 entry with the app's icon to the applications menu (so files can be opened with it).
-`./install.sh --remove` takes it out again. The app needs what any desktop system has — an X
-server (or XWayland), fontconfig and glibc; it does not need the ICU libraries.
+`masterfileconverter --uninstall` (or `install.sh --remove` in that folder) takes all of it out
+again, with the engines the app downloaded (`~/.local/share/masterfileconverter`), its settings
+(`~/.config/masterfileconverter`) and work files left in the temp folder; add `--keep-settings`
+to leave the settings for a later installation. A copy that was only unpacked is removed by
+deleting its folder. The app needs what any desktop system has — an X server (or XWayland),
+fontconfig and glibc; it does not need the ICU libraries.
 
 The programs are not code-signed, so Windows shows its "Windows protected your PC" notice for a
 freshly downloaded copy (**More info → Run anyway**).
@@ -219,20 +236,47 @@ the target of every compatible file at once.
 - **File size slider** — target output size as a % of the original. Drives bitrate
   targeting for audio/video (two-pass encoding on slower speed presets), a search for the
   highest quality that fits for images, and compression levels for archives.
-- Dark by default; the ··· menu at the bottom right switches to a light theme or to following the system, and opens the settings folder.
+- Dark by default; the ··· menu at the bottom right switches to a light theme or to following
+  the system, and opens the settings folder, the licences and the app's page with its source.
 - **New versions, if you want to hear of them.** The first start asks once whether the app
   should tell you when a new version is out. With *No* it never asks again and never connects
-  for this. With *Yes* it looks once at each start, and a newer version shows as a warning sign
-  beside the ··· menu; a click opens the download page. Nothing is downloaded or installed by
-  itself. The look is one request without content to GitHub for the address of the latest
-  release — the version number is read from the address that comes back — so GitHub sees what
-  any website sees, the computer's internet address, and nothing about you or your files. The
-  ··· menu's *Tell me about new versions* changes the choice at any time. The command line
-  never looks.
+  by itself. With *Yes* it looks once at each start, and a newer version shows as a warning sign
+  beside the ··· menu. The look is one request without content to GitHub for the address of the
+  latest release — the version number is read from the address that comes back — so GitHub sees
+  what any website sees, the computer's internet address, and nothing about you or your files.
+  The ··· menu's *Tell me about new versions* changes the choice at any time, and *Look for a
+  new version now* looks once on request, whatever the choice. The command line never looks by
+  itself.
+- **Updating is one click** on that warning sign — and never happens without it. The app asks
+  GitHub for the newest release's files, downloads the one for this copy into its data folder
+  and checks it against the SHA-256 checksum GitHub states for it; a file that does not match is
+  deleted and not used. An installed copy on Windows is updated by the new version's installer,
+  run without its pages (its progress shows), which also keeps "Installed apps" right; a folder
+  unpacked from the `.zip`, and the app on Linux, by the new download: it is unpacked, and the
+  new copy moves in where the old one lies once that has closed. The old version stays whole
+  until the new one lies complete beside it, and is put back if the swap fails; nothing else in
+  the folder is touched. With no files in the list the app closes, updates and comes back by
+  itself. Otherwise the update waits: *Restart and update* when you are ready (not while files
+  are converting), or just close the app when you are done — it is installed then. A second
+  window of the app has to be closed first. What an update leaves in the data folder is removed
+  at the next start; and if an update did not go through, the app says so when it is next
+  started. From a terminal, `--update` does the same, and `--update --from <file>` installs a
+  download that is already on the computer — the file for this system, under its published
+  name — without going online. A copy that cannot replace itself (a folder it may not write to,
+  a build of your own) gets the download page instead.
+- **Closing the window ends everything.** If files are still converting, the app asks; with
+  *Stop and close* the engines are ended and what they had half written is removed before the
+  window goes. Nothing of the app runs on afterwards, and nothing starts with the system.
 
 Settings are kept in `%LOCALAPPDATA%\MasterFileConverter\settings.json` on Windows and
 `~/.config/masterfileconverter/settings.json` on Linux; the downloaded engines lie in `tools`
-beside it (on Linux under `~/.local/share/masterfileconverter`).
+beside it (on Linux under `~/.local/share/masterfileconverter`), with what the app measured
+about the machine's encoders, a log of errors, and — while one is being fetched — an update.
+What the app writes while it converts (an unpacked archive, an encoder's first-pass notes) goes
+to the system's temp folder under names that start with `MasterFileConverter-` and is removed
+when the conversion ends; what a crash or a power cut left there is cleared away at a later
+start, once it is three days old. Beyond these places and its own program folder the app
+writes only the files you convert to.
 
 Version 2.0 was called FileConverter and kept the same things in folders of that name. At its
 first start a newer version takes them over — the settings are copied and the engines get a
@@ -289,6 +333,8 @@ masterfileconverter <input> [<input2> …] <target-ext> [options]
 masterfileconverter --list-settings <source-ext> <target-ext>   the settings --set accepts
 masterfileconverter --setup-tools                               download FFmpeg and 7-Zip
 masterfileconverter --self-test [--filter <text>] [--keep]      check every conversion on this machine
+masterfileconverter --update [--from <file>]                    look for a newer version and install it
+masterfileconverter --uninstall [--keep-settings]               remove the installed app (Linux)
 ```
 
 (`MasterFileConverter.exe --cli …` works too, but being a windowed program it does not make the
@@ -337,10 +383,21 @@ Windows and the other way round.
 **The Windows installer** is made by `build\windows\installer.ps1` (which `build\publish.ps1`
 runs) from `build\windows\installer.iss`, with [Inno Setup](https://jrsoftware.org/isinfo.php)
 (`winget install JRSoftware.InnoSetup`); without it the folder and the zip are still built. It
-installs for the current user, without administrator rights: a Start menu entry, an entry under
-"Installed apps" with an uninstaller, and, as the user chooses, a desktop shortcut, "Send to"
-and "Open with" for the file types the app reads. Uninstalling asks before removing settings
-and downloaded engines. The logo on its pages is drawn by `build/MakeIcon.cs`, like every other.
+installs for the current user, without administrator rights: an entry under "Installed apps"
+with an uninstaller, and, as the user chooses, Start menu and desktop shortcuts, "Send to" and
+"Open with" for the file types the app reads. The logo on its pages is drawn by
+`build/MakeIcon.cs`, like every other. Three switches are the script's own: the app updates
+itself by running the newer installer with `/SILENT /FROMAPP` (wait for the app to close before
+touching a file) and `/RELAUNCH` (start it again afterwards); the uninstaller takes
+`/KEEPSETTINGS`. What Windows knows the installation by, the AppId, is `FcWindowsAppId` in
+`Directory.Build.props` — the app reads it to tell an installed copy from an unpacked one.
+
+**A trial copy** that can be installed, updated and uninstalled beside the real app without
+touching it is the same source under other names: publish with `-p:FcProgramName=…
+-p:FcDisplayName=… -p:FcUnixName=… -p:FcWindowsAppId=<a GUID of its own>` (and
+`-p:FcReleaseFeed=<address>` to have it look for updates somewhere else than this repository's
+releases), then `build\windows\installer.ps1 -Folder … -Set @{ ProgramName = …; DisplayName = …;
+AppId = … }`. It gets its own program folder, data folder, shortcuts and registry entries.
 
 **The licences** go into every download's `app/licenses` folder, which the window's ··· menu
 opens: `LICENSE`, `THIRD-PARTY-NOTICES.md`, the texts in `build/licenses`, and the licence and
@@ -348,10 +405,60 @@ notice files that the libraries' own NuGet packages bring — collected when the
 built, from the very packages it is built from.
 
 `.github/workflows/build.yml` builds, tests and self-tests on a Windows and a Linux runner for
-pull requests and on demand, and for a tag such as `v2.2.0` attaches the installer and both
-downloads to a GitHub release.
+every push and pull request and on demand. With the download it has built it then goes through
+what a user's machine sees: an unpacked folder updated in place by the app itself; and the app
+installed (the installer on Windows, `install.sh` on Linux), updated, uninstalled keeping the
+settings, installed again and uninstalled altogether — after which nothing of it may be left. For a tag
+such as `v2.4.0` it attaches the installer and both downloads to a GitHub release, whose page
+says which file is for which system, what is new (that version's part of `CHANGELOG.md`) and the
+files' SHA-256 checksums.
 
 ## What has been checked
+
+Version 2.4.0 made updating one click, uninstalling complete, and closing the window final.
+
+On Windows 11 this was gone through with **a trial copy** — the same source built under another
+name and AppId (see [Building](#building)), in two versions, with a stand-in for GitHub's list
+of releases served from the same machine — because the test machine has the real app installed
+for use, which was not to be touched:
+
+- **Installed** through the installer's pages, each looked at in dark mode (where the app's
+  logo now shows; before, Inno Setup's stock picture did): the program folder, the four
+  shortcuts and entries chosen, "Installed apps" with name, version and publisher.
+- **Updated from the window:** one click on the warning sign — the download, its checksum, the
+  installer's progress window, and the app was back as the new version, saying so: 20 to 30
+  seconds from click to window.
+- **Updated from the command line** (`--update`): refused while the app's window was open;
+  after closing it, the new version was in place half a minute later and the app not started.
+  With a second installer window of the same app left open, the update could not run — which
+  is why the app now says at its next start when an update did not go through.
+- **An unpacked folder** updated by `--update` in 9 seconds: a file only the old version had
+  was gone, a file of the user's own beside the app untouched, nothing of the swap left.
+- **Uninstalled with the app still open:** the uninstaller asked for it to be closed, then
+  whether to keep the settings; with *Keep my settings*, `settings.json` stayed and nothing
+  else. **Uninstalled without questions:** nothing left — the program folder, the shortcuts,
+  a taskbar pin, the three registry entries, the data folder, a work folder and a work file
+  put into the temp folder for the purpose; and a setting of Word's, left changed on purpose
+  the way a crash of the app would leave it, was put back.
+- **The window closed on a running conversion** (a four-minute video to WebM): the question
+  came up; *Keep converting* kept it going; *Stop and close* ended the app in a third of a
+  second, with no encoder running afterwards, the half-written file gone and nothing left in
+  the temp folder. The same done to version 2.3.0 — which closed without asking — left the
+  encoder running and the half-written file where it was.
+
+On GitHub's machines (Windows Server and Ubuntu), for every push, with the very downloads built
+there: the test suite, the download's `--self-test`, an unpacked folder updated by the app
+itself (`--update --from` the download just built), and the app installed, updated the same
+way, uninstalled keeping the settings, installed again and uninstalled altogether, with a check
+after each that exactly what should be left is left. That is where the Linux side of all this
+has run — the script, the command, the menu entry renewed by an update; no window on a desktop
+there.
+
+Not checked: an update from one released version to the next. 2.4.0 is the first version that
+can update itself, so the release after it will be the first real one; what was tried is the
+same code against the stand-in list. And an update while Windows' SmartScreen or a virus
+scanner objects to an unsigned installer started by another program — none did on the test
+machine.
 
 Version 2.3.0 added the notice of new versions and gave the Windows installer its pages. For it,
 on Windows 11:

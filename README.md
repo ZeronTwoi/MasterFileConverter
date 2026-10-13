@@ -31,6 +31,11 @@ PC", because the app is not code-signed yet: choose **More info**, then **Run an
 At its first start the app offers to fetch FFmpeg and 7-Zip (for audio, video and .7z) from their
 publishers, and checks what it downloaded against their checksums. Everything else is built in.
 
+**Updating** takes one click in the app when a new version is out. **Uninstalling** removes all
+of it — the app, its shortcuts, the engines it downloaded and, unless you keep them, your
+settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
+`masterfileconverter --uninstall`.
+
 ## What it converts
 
 | | From | To |
@@ -52,9 +57,10 @@ publishers, and checks what it downloaded against their checksums. Everything el
   actually quicker.
 - **Simple, precise when wanted.** One slider trades size for quality. The *Detailed settings*
   panel gives exact control: resolution, bitrate, codec, target size, password and more.
-- **Offline.** Your files never leave your computer. The app only goes online for what you
-  agree to: fetching the engines, and — if you say yes when it asks — one look per start for a
-  newer version.
+- **Offline, and nothing behind your back.** Your files never leave your computer. The app
+  only goes online for what you agree to: fetching the engines, one look per start for a newer
+  version if you say yes when it asks, and installing that version when you click. No account,
+  no ads, no usage data, nothing running in the background, nothing started with the system.
 - **A command line** for scripts, in the same download.
 
 All the details — every setting, what "lossless" covers, speed measurements, the command line,

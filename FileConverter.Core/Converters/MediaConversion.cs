@@ -358,7 +358,7 @@ public static class MediaConversion
 
         // Two steps (build the palette, then apply it) instead of one filter graph with a split:
         // the split has to hold every decoded frame in memory until the palette is finished.
-        var palette = Path.Combine(Path.GetTempPath(), $"fc-palette-{Guid.NewGuid():N}.png");
+        var palette = WorkFiles.NewPath("palette", ".png");
         try
         {
             await FfmpegRunner.RunAsync(
@@ -690,7 +690,7 @@ public static class MediaConversion
             return;
         }
 
-        var passLog = Path.Combine(Path.GetTempPath(), $"fcpass-{Guid.NewGuid():N}");
+        var passLog = WorkFiles.NewPath("pass");
         try
         {
             // the analysis pass only needs the video stream

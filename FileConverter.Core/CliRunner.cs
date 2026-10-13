@@ -11,6 +11,8 @@ namespace FileConverter.Core;
 ///   --list-settings &lt;source-ext&gt; &lt;target-ext&gt;   the precise settings --set accepts for a conversion
 ///   --setup-tools   downloads FFmpeg and 7-Zip
 ///   --self-test     converts a generated sample of every format to every target and checks the results
+///   --update        looks for a newer version of the app and installs it (--from &lt;file&gt;: from a download already here)
+///   --uninstall     takes an installed copy off the computer again (Linux; on Windows that is "Installed apps")
 /// Several inputs with a combinable target (images → pdf/gif/tiff, anything → an
 /// archive) merge into ONE output unless --each is given; otherwise every input is
 /// converted on its own, in parallel.
@@ -19,7 +21,8 @@ namespace FileConverter.Core;
 public static class CliRunner
 {
     private static readonly string[] Commands =
-        ["--cli", "--setup-tools", "--self-test", "--list-settings", "--help", "-h", "--version", Converters.PdfPageExport.WorkerCommand];
+        ["--cli", "--setup-tools", "--self-test", "--list-settings", "--update", "--uninstall", "--help", "-h", "--version",
+            Converters.PdfPageExport.WorkerCommand];
 
     /// <summary>Do these arguments ask for the command line rather than the window?</summary>
     public static bool Handles(string[] args) => args.Any(a => Commands.Contains(a));
@@ -42,6 +45,10 @@ public static class CliRunner
           --self-test             try every conversion on generated samples and report what works
               --filter <text>     only the cases whose name contains the text, e.g. "mp4" or "→ pdf"
               --keep              leave the samples and results in the temp folder afterwards
+          --update                look for a newer version of the app and install it
+              --from <file>       install it from a download that is already here, without going online
+          --uninstall             remove the installed app, the engines it downloaded and its settings (Linux)
+              --keep-settings     leave the settings for a later installation
           --version
         """;
 
@@ -49,6 +56,8 @@ public static class CliRunner
     {
         PlatformServices.Current.AttachToParentConsole(); // a windowed program has no console of its own
         try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { /* output is redirected somewhere that decides for itself */ }
+        // what an update left in the data folder, for those who never open the window (it does the same)
+        AppUpdater.RemoveLeftovers();
         try
         {
             return RunCoreAsync(args).GetAwaiter().GetResult();
@@ -94,6 +103,10 @@ public static class CliRunner
         }
         if (args.Contains("--self-test"))
             return await RunSelfTestAsync(args);
+        if (args.Contains("--update"))
+            return await UpdateAsync(args);
+        if (args.Contains("--uninstall"))
+            return Uninstall(keepSettings: args.Contains("--keep-settings"));
         if (args.Contains("--list-settings"))
             return ListSettings(args);
 
@@ -315,7 +328,7 @@ public static class CliRunner
         Console.WriteLine();
 
         // a fresh folder every time: office programs remember files they were interrupted on
-        var workDir = Path.Combine(Path.GetTempPath(), $"{AppInfo.UnixName}-selftest-{Guid.NewGuid().ToString("N")[..8]}");
+        var workDir = WorkFiles.NewPath("selftest");
         var watch = Stopwatch.StartNew();
         var results = await SelfTest.RunAsync(workDir, filter, result =>
         {
@@ -352,6 +365,73 @@ public static class CliRunner
         };
         var time = result.Outcome == SelfTestOutcome.Skipped ? "" : $"  ({result.Elapsed.TotalSeconds:0.0} s)";
         return $"{tag}  {result.Name,-34} {result.Detail}{time}";
+    }
+
+    /// <summary>
+    /// "--update": looks for a newer version and installs it. It is the one thing that makes the
+    /// command line look — asked for by name, never by itself.
+    /// </summary>
+    private static async Task<int> UpdateAsync(string[] args)
+    {
+        if (!AppUpdater.CanUpdate)
+        {
+            Console.Error.WriteLine("This copy of the app cannot update itself. The newest version is at " + UpdateCheck.DownloadPage);
+            return 1;
+        }
+
+        PreparedUpdate prepared;
+        int from = Array.IndexOf(args, "--from");
+        if (from >= 0)
+        {
+            // a download fetched by hand, for a machine that is not online
+            if (from + 1 >= args.Length)
+            {
+                Console.Error.WriteLine("--from needs the file: the download for this system, as it was published.");
+                return 2;
+            }
+            prepared = await AppUpdater.PrepareFromFileAsync(args[from + 1], CancellationToken.None);
+            Console.WriteLine($"{AppInfo.DisplayName} {Version} — updating to version {prepared.Version} from {Path.GetFileName(args[from + 1])} …");
+        }
+        else
+        {
+            Console.WriteLine($"{AppInfo.DisplayName} {Version} — looking for a newer version …");
+            var update = await AppUpdater.FindAsync(CancellationToken.None);
+            if (update == null)
+            {
+                Console.WriteLine("This is the newest version.");
+                return 0;
+            }
+
+            Console.WriteLine($"Downloading version {update.Version} ({update.File.Name}) …");
+            prepared = await AppUpdater.PrepareAsync(update, PercentPrinter(), CancellationToken.None);
+        }
+
+        try
+        {
+            AppUpdater.Start(prepared, restart: false, unattended: true);
+        }
+        catch
+        {
+            AppUpdater.Discard();
+            throw;
+        }
+        Console.WriteLine((from >= 0 ? $"Version {prepared.Version} is" : $"Version {prepared.Version} is downloaded and checked. It is") +
+                          " put in place as soon as this command has ended — give it a few seconds.");
+        return 0;
+    }
+
+    /// <summary>"--uninstall", where the app takes itself off the computer (Linux).</summary>
+    private static int Uninstall(bool keepSettings)
+    {
+        var platform = PlatformServices.Current;
+        if (platform.Uninstall(keepSettings)) return 0;
+
+        Console.Error.WriteLine(platform.Name == "Windows"
+            ? "On Windows, uninstall the app under Settings → Apps → Installed apps. A copy unpacked from the .zip is removed by deleting its folder."
+            : "This copy was not installed with install.sh, so there is nothing to uninstall: delete its folder.");
+        Console.Error.WriteLine($"Settings are kept in {platform.ConfigDirectory}" +
+            (platform.DataDirectory == platform.ConfigDirectory ? ", with the downloaded engines." : $", downloaded engines in {platform.DataDirectory}."));
+        return 1;
     }
 
     /// <summary>Prints "progress N%" in 20 % steps.</summary>

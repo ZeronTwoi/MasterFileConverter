@@ -163,6 +163,7 @@ public class WindowTests
     {
         public Task<IReadOnlyList<string>> PickFilesAsync() => throw new PlatformNotSupportedException("no dialog service");
         public Task<string?> PickFolderAsync(string title) => throw new PlatformNotSupportedException("no dialog service");
+        public void Close() { }
     }
 
     [AvaloniaFact]
