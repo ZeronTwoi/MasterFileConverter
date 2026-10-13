@@ -103,10 +103,17 @@
               Condition="'$(FcTargetOS)' == 'linux'" />
     </ItemGroup>
 
-    <!-- The Windows manifest names the program and its version: both filled in from Directory.Build.props. -->
+    <!-- The Windows manifest names the program and its version. Whatever app.manifest says for them,
+         the copy that is built in says what Directory.Build.props says. -->
     <Target Name="FcWriteManifest" BeforeTargets="CoreCompile" DependsOnTargets="GetAssemblyVersion">
+        <PropertyGroup>
+            <FcManifest>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/app.manifest'))</FcManifest>
+            <FcManifest>$([System.Text.RegularExpressions.Regex]::Replace($(FcManifest), '(?&lt;=&lt;assemblyIdentity[^&gt;]*\sversion=&quot;)[^&quot;]*', '$(FileVersion)'))</FcManifest>
+            <FcManifest>$([System.Text.RegularExpressions.Regex]::Replace($(FcManifest), '(?&lt;=&lt;assemblyIdentity[^&gt;]*\sname=&quot;)[^&quot;]*', '$(Company).$(FcProgramName)'))</FcManifest>
+            <FcManifest>$([System.Text.RegularExpressions.Regex]::Replace($(FcManifest), '(?&lt;=&lt;description&gt;)[^&lt;]*', '$(FcDisplayName)'))</FcManifest>
+        </PropertyGroup>
         <WriteLinesToFile File="$(ApplicationManifest)" Overwrite="true" WriteOnlyWhenDifferent="true"
-                          Lines="$([MSBuild]::Escape($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/app.manifest').Replace('@Name@', '$(Company).$(FcProgramName)').Replace('@DisplayName@', '$(FcDisplayName)').Replace('@Version@', '$(FileVersion)'))))" />
+                          Lines="$([MSBuild]::Escape($(FcManifest)))" />
     </Target>
 
     <!-- The graphics libraries ship their debug symbols (100 MB); a download has no use for them. -->

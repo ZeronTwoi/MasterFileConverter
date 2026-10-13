@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <!-- Used on Windows only. The name and version between @ signs are filled in by the build
-       (FileConverter.csproj) from Directory.Build.props. -->
-  <assemblyIdentity type="win32" version="@Version@" name="@Name@"/>
-  <description>@DisplayName@</description>
+  <!-- Used on Windows only. The version, name and description written here are what an editor
+       reads; a build puts the current ones from Directory.Build.props in their place
+       (FcWriteManifest in FileConverter.csproj), so they need no updating by hand. -->
+  <assemblyIdentity type="win32" version="2.2.0.0" name="Zeronoid.MasterFileConverter"/>
+  <description>Master File Converter</description>
 
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
