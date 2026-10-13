@@ -35,7 +35,7 @@ public static class ArchiveConversion
             bool extractedBy7Zip = false;
             if (sourceIsArchive)
             {
-                tempDir = Path.Combine(Path.GetTempPath(), $"fc-arc-{Guid.NewGuid():N}");
+                tempDir = WorkFiles.NewPath("unpack");
                 Directory.CreateDirectory(tempDir);
                 extractedBy7Zip = await ExtractArchiveAsync(input, tempDir, progress, ct);
                 contentRoot = tempDir;
@@ -122,7 +122,7 @@ public static class ArchiveConversion
             {
                 // The CLI tools take a directory, so stage the files (hardlink when
                 // possible — no copy cost — else copy) under their archive names.
-                var stage = Path.Combine(Path.GetTempPath(), $"fc-pack-{Guid.NewGuid():N}");
+                var stage = WorkFiles.NewPath("pack");
                 Directory.CreateDirectory(stage);
                 try
                 {

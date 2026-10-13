@@ -8,7 +8,7 @@
         writes, see FileConverter.Core.csproj.)
     -->
     <PropertyGroup>
-        <Version>2.3.0</Version>
+        <Version>2.4.0</Version>
         <!-- as people read it -->
         <FcDisplayName>Master File Converter</FcDisplayName>
         <!-- as one word: the programs, the downloads, the data folder on Windows -->
@@ -18,6 +18,10 @@
         <FcSummary>Convert images, audio, video, documents and archives</FcSummary>
         <!-- where the app lives: its source, its downloads (…/releases/latest), its issues -->
         <FcWebsite>https://github.com/ZeronTwoi/MasterFileConverter</FcWebsite>
+        <!-- what GitHub answers when asked for the newest release and its files: an update is fetched from what it names -->
+        <FcReleaseFeed>$(FcWebsite.Replace('https://github.com/', 'https://api.github.com/repos/'))/releases/latest</FcReleaseFeed>
+        <!-- what Windows knows an installation by, across versions ("Installed apps", the uninstaller): never change it -->
+        <FcWindowsAppId>6F0D6A52-3C1B-4E57-9B4E-5B8A2D7C91E4</FcWindowsAppId>
 
         <Product>$(FcDisplayName)</Product>
         <Company>Zeronoid</Company>

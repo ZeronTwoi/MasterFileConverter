@@ -8,10 +8,17 @@
     The result, <name>-<version>-win-x64-setup.exe, lands beside the folder. The names come from
     Directory.Build.props; what the installer does is said in installer.iss. It needs Inno Setup
     (https://jrsoftware.org/isinfo.php, or: winget install JRSoftware.InnoSetup).
+
+    -Set replaces names for one run, for a folder that was published with the same ones replaced
+    (dotnet publish -p:FcProgramName=... -p:FcWindowsAppId=...): a trial copy that installs, updates
+    and uninstalls beside the real app without touching it.
+
+        build\windows\installer.ps1 -Folder <folder> -Set @{ ProgramName = 'Trial'; DisplayName = 'Trial'; AppId = '<a GUID of its own>'; Version = '0.9.0' }
 #>
 param(
     [Parameter(Mandatory)][string]$Folder,
-    [string]$OutputDir
+    [string]$OutputDir,
+    [hashtable]$Set = @{}
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,13 +47,18 @@ $defines = [ordered]@{
     Summary     = $app.FcSummary
     Website     = $app.FcWebsite
     Version     = $app.Version
+    AppId       = $app.FcWindowsAppId
     Company     = $app.Company
     Copyright   = $app.Copyright.Replace('$(Company)', $app.Company)
+}
+foreach ($name in $Set.Keys) {
+    if (-not $defines.Contains($name)) { throw "-Set: there is no '$name' (there are: $($defines.Keys -join ', '))" }
+    $defines[$name] = $Set[$name]
 }
 $arguments = @($defines.GetEnumerator() | ForEach-Object { "/D$($_.Key)=$($_.Value)" }) + '/Qp' + (Join-Path $PSScriptRoot 'installer.iss')
 
 & $compiler @arguments
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
-$installer = Join-Path $OutputDir "$($app.FcProgramName)-$($app.Version)-win-x64-setup.exe"
+$installer = Join-Path $OutputDir "$($defines.ProgramName)-$($defines.Version)-win-x64-setup.exe"
 Write-Host ("{0}  {1:N1} MB" -f (Split-Path -Leaf $installer), ((Get-Item $installer).Length / 1MB))

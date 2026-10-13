@@ -110,7 +110,7 @@ public static class MergeConversion
             return;
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"fc-pdf-{Guid.NewGuid():N}");
+        var tempDir = WorkFiles.NewPath("pdf");
         Directory.CreateDirectory(tempDir);
         try
         {
@@ -233,7 +233,7 @@ public static class MergeConversion
     private static void ImagesToSmallerPdf(IReadOnlyList<string> inputs, string output,
         ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"fc-pdf-{Guid.NewGuid():N}");
+        var tempDir = WorkFiles.NewPath("pdf");
         Directory.CreateDirectory(tempDir);
         try
         {

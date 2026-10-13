@@ -129,9 +129,16 @@ public static class Downloads
     }
 
     /// <summary>The files of a GitHub release (the address of its API entry), each with the checksum GitHub states for it.</summary>
-    public static async Task<IReadOnlyList<ReleaseFile>> GetReleaseFilesAsync(string releaseApiUrl, CancellationToken ct)
+    public static async Task<IReadOnlyList<ReleaseFile>> GetReleaseFilesAsync(string releaseApiUrl, CancellationToken ct) =>
+        ReadRelease(await GetStringAsync(releaseApiUrl, ct)).Files;
+
+    /// <summary>What GitHub's API says about a release: its tag ("v2.4.0") and its files.</summary>
+    internal static (string? Tag, IReadOnlyList<ReleaseFile> Files) ReadRelease(string json)
     {
-        using var release = JsonDocument.Parse(await GetStringAsync(releaseApiUrl, ct));
+        using var release = JsonDocument.Parse(json);
+        var tag = release.RootElement.TryGetProperty("tag_name", out var named) && named.ValueKind == JsonValueKind.String
+            ? named.GetString()
+            : null;
         var files = new List<ReleaseFile>();
         foreach (var asset in release.RootElement.GetProperty("assets").EnumerateArray())
         {
@@ -145,7 +152,7 @@ public static class Downloads
                 : null;
             files.Add(new ReleaseFile(name, url, digest?.StartsWith("sha256:", StringComparison.Ordinal) == true ? digest[7..] : null));
         }
-        return files;
+        return (tag, files);
     }
 
     // ---------- 7-Zip ----------

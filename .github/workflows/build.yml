@@ -1,13 +1,14 @@
 name: Build, test and release
 
-# Runs for pull requests, on demand (Actions tab → "Run workflow"), and for version tags.
-# A tag such as v2.2.0 also creates a GitHub release with the Windows installer and the two
-# downloads attached.
+# Runs for every push, for pull requests from elsewhere, on demand (Actions tab → "Run workflow"),
+# and for version tags. A tag such as v2.4.0 also creates a GitHub release with the Windows
+# installer and the two downloads attached.
 on:
+  push:
+    branches: ['**']
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 
 permissions:
   contents: read
@@ -15,6 +16,8 @@ permissions:
 jobs:
   build:
     name: ${{ matrix.rid }}
+    # a pull request from a branch of this repository was already built when that branch was pushed
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -40,9 +43,11 @@ jobs:
         shell: pwsh
         run: |
           $app = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup[0]
+          "APP_NAME=$($app.FcDisplayName)" >> $env:GITHUB_ENV
           "APP_PROGRAM=$($app.FcProgramName)" >> $env:GITHUB_ENV
           "APP_COMMAND=$($app.FcUnixName)" >> $env:GITHUB_ENV
           "APP_VERSION=$($app.Version)" >> $env:GITHUB_ENV
+          "APP_ID=$($app.FcWindowsAppId)" >> $env:GITHUB_ENV
 
       # What the window's renderer needs; a desktop system already has it.
       - name: Install fontconfig and a font (Linux)
@@ -96,6 +101,133 @@ jobs:
           & "$env:FC_FOLDER/$env:APP_PROGRAM-cli.exe" --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # An update the way the app does it for an unpacked folder: a newer copy of the download
+      # moves in where an older one lies. (Both are this build; what is checked is the move.)
+      - name: Update an unpacked folder in place (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp -R "$FC_FOLDER" "$RUNNER_TEMP/old"
+          cp -R "$FC_FOLDER" "$RUNNER_TEMP/new"
+          echo "dropped by the new version" > "$RUNNER_TEMP/old/app/only-in-the-old-copy.txt"
+          echo "the user's own" > "$RUNNER_TEMP/old/notes.txt"
+          "$RUNNER_TEMP/new/$APP_COMMAND" --apply-update "$RUNNER_TEMP/old" 0 close
+          test ! -e "$RUNNER_TEMP/old/app/only-in-the-old-copy.txt"
+          test -f "$RUNNER_TEMP/old/notes.txt"
+          test -z "$(find "$RUNNER_TEMP/old" -maxdepth 1 \( -name '*.old' -o -name '*.new' \))"
+          "$RUNNER_TEMP/old/$APP_COMMAND" --version
+
+      - name: Update an unpacked folder in place (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item $env:FC_FOLDER "$env:RUNNER_TEMP\old" -Recurse
+          Copy-Item $env:FC_FOLDER "$env:RUNNER_TEMP\new" -Recurse
+          'dropped by the new version' > "$env:RUNNER_TEMP\old\app\only-in-the-old-copy.txt"
+          "the user's own" > "$env:RUNNER_TEMP\old\notes.txt"
+          $update = Start-Process "$env:RUNNER_TEMP\new\$env:APP_PROGRAM.exe" -Wait -PassThru `
+              -ArgumentList '--apply-update', "`"$env:RUNNER_TEMP\old`"", '0', 'close'
+          if ($update.ExitCode -ne 0) {
+              Get-Content "$env:LOCALAPPDATA\$env:APP_PROGRAM\update-failed.txt" -ErrorAction SilentlyContinue
+              throw "the update ended with $($update.ExitCode)"
+          }
+          if (Test-Path "$env:RUNNER_TEMP\old\app\only-in-the-old-copy.txt") { throw 'a file of the old version outlived it' }
+          if (-not (Test-Path "$env:RUNNER_TEMP\old\notes.txt")) { throw "the user's own file is gone" }
+          if (Get-ChildItem "$env:RUNNER_TEMP\old" | Where-Object Name -match '\.(old|new)$') { throw 'the swap left something behind' }
+          & "$env:RUNNER_TEMP\old\$env:APP_PROGRAM-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Installed, updated and removed again, each the way a user's machine sees it — and then
+      # nothing of the app may be left.
+      - name: Install, update and uninstall (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          export HOME="$RUNNER_TEMP/home"
+          unset XDG_DATA_HOME XDG_CONFIG_HOME
+          mkdir -p "$HOME"
+          "$FC_FOLDER/install.sh"
+          installed="$HOME/.local/lib/$APP_COMMAND"
+          "$HOME/.local/bin/$APP_COMMAND" --version
+
+          # an update of the installed copy also renews what install.sh made: here, the menu entry
+          cp -R "$FC_FOLDER" "$RUNNER_TEMP/newer"
+          touch "$installed/app/only-in-the-old-copy.txt"
+          rm "$HOME/.local/share/applications/$APP_COMMAND.desktop"
+          "$RUNNER_TEMP/newer/$APP_COMMAND" --apply-update "$installed" 0 close
+          test ! -e "$installed/app/only-in-the-old-copy.txt"
+          test -f "$HOME/.local/share/applications/$APP_COMMAND.desktop"
+          "$HOME/.local/bin/$APP_COMMAND" --version
+
+          # what the app makes while it is used
+          mkdir -p "$HOME/.local/share/$APP_COMMAND/tools" "$HOME/.config/$APP_COMMAND"
+          echo engine > "$HOME/.local/share/$APP_COMMAND/tools/ffmpeg"
+          echo '{}' > "$HOME/.config/$APP_COMMAND/settings.json"
+          echo log > "$HOME/.config/$APP_COMMAND/error.log"
+
+          "$HOME/.local/bin/$APP_COMMAND" --uninstall --keep-settings
+          test -f "$HOME/.config/$APP_COMMAND/settings.json"
+          left=$(find "$HOME" -iname "*$APP_COMMAND*" ! -path "$HOME/.config/$APP_COMMAND")
+          if [ -n "$left" ]; then echo "left behind:"; echo "$left"; exit 1; fi
+          test "$(ls -A "$HOME/.config/$APP_COMMAND")" = "settings.json"
+
+          "$FC_FOLDER/install.sh"
+          "$HOME/.local/bin/$APP_COMMAND" --uninstall
+          left=$(find "$HOME" -iname "*$APP_COMMAND*")
+          if [ -n "$left" ]; then echo "left behind:"; echo "$left"; exit 1; fi
+
+      - name: Install, update and uninstall (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path $env:FC_INSTALLER).Path
+          $folder = "$env:LOCALAPPDATA\Programs\$env:APP_NAME"
+          $data = "$env:LOCALAPPDATA\$env:APP_PROGRAM"
+          $entry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{$env:APP_ID}_is1"
+          $places = @(
+              $folder
+              "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\$env:APP_NAME.lnk"
+              "$env:USERPROFILE\Desktop\$env:APP_NAME.lnk"
+              "$env:APPDATA\Microsoft\Windows\SendTo\$env:APP_NAME.lnk"
+              $entry
+              "HKCU:\Software\Classes\Applications\$env:APP_PROGRAM.exe"
+              "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\$env:APP_PROGRAM.exe"
+          )
+          function Run($program, [string[]]$arguments) {
+              $process = Start-Process $program -ArgumentList $arguments -Wait -PassThru
+              if ($process.ExitCode -ne 0) { throw "$(Split-Path -Leaf $program) $arguments ended with $($process.ExitCode)" }
+          }
+          function Install {
+              Run $setup '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+              foreach ($place in $places) { if (-not (Test-Path -LiteralPath $place)) { throw "not there after installing: $place" } }
+          }
+
+          Install
+          & "$folder\$env:APP_PROGRAM-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-ItemProperty -LiteralPath $entry).DisplayVersion -ne $env:APP_VERSION) { throw '"Installed apps" names another version' }
+
+          # an update, the way the app runs the installer of a newer version
+          'dropped by the new version' > "$folder\app\only-in-the-old-copy.txt"
+          Run $setup '/SILENT', '/SUPPRESSMSGBOXES', '/NOCANCEL', '/NORESTART', '/CLOSEAPPLICATIONS', '/FROMAPP'
+          if (Test-Path "$folder\app\only-in-the-old-copy.txt") { throw 'a file of the old version outlived the update' }
+
+          # what the app makes while it is used: engines, settings, a log, a work file a crash left
+          New-Item -ItemType Directory -Force "$data\tools" | Out-Null
+          'engine' > "$data\tools\ffmpeg.exe"; '{}' > "$data\settings.json"; 'log' > "$data\error.log"
+          $work = "$env:TEMP\$env:APP_PROGRAM-unpack-0123456789abcdef"
+          New-Item -ItemType Directory -Force $work | Out-Null
+          'half an archive' > "$work\file.bin"
+
+          # removed, keeping the settings: those and nothing else stay
+          Run "$folder\unins000.exe" '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/KEEPSETTINGS'
+          foreach ($place in $places + $work) { if (Test-Path -LiteralPath $place) { throw "left behind: $place" } }
+          $kept = @(Get-ChildItem $data -Force | ForEach-Object Name)
+          if ("$kept" -ne 'settings.json') { throw "kept in the data folder: $kept" }
+
+          # and removed altogether
+          Install
+          Run "$folder\unins000.exe" '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          foreach ($place in $places + $data) { if (Test-Path -LiteralPath $place) { throw "left behind: $place" } }
+
       - uses: actions/upload-artifact@v4
         with:
           name: download-${{ matrix.rid }}
@@ -133,6 +265,40 @@ jobs:
           merge-multiple: true
           path: downloads
 
+      # What a visitor reads: which file is theirs, what is new (this version's part of
+      # CHANGELOG.md), and the checksums to check a download against.
+      - name: Write the release page
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          program=$(sed -n 's:.*<FcProgramName>\(.*\)</FcProgramName>.*:\1:p' Directory.Build.props | head -1)
+          files="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          {
+            echo "## Download"
+            echo
+            echo "| Your system | File | Then |"
+            echo "|---|---|---|"
+            echo "| **Windows 10 / 11** | [$program-$version-win-x64-setup.exe]($files/$program-$version-win-x64-setup.exe) | run it — no administrator rights needed |"
+            echo "| Windows, without installing | [$program-$version-win-x64.zip]($files/$program-$version-win-x64.zip) | unzip anywhere, run \`$program.exe\` |"
+            echo "| **Linux** (64-bit) | [$program-$version-linux-x64.tar.gz]($files/$program-$version-linux-x64.tar.gz) | unpack, run \`./install.sh\` |"
+            echo
+            echo "Nothing else has to be installed first. Windows may say \"Windows protected your PC\" for a freshly"
+            echo "downloaded copy, because the app is not code-signed yet: choose **More info**, then **Run anyway**."
+            echo "Already have the app? It updates itself from its own window."
+            echo
+            echo "## What is new"
+            echo
+            awk -v heading="## $version" '$0 == heading { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md
+            echo
+            echo "<details><summary>SHA-256 checksums</summary>"
+            echo
+            echo '```'
+            (cd downloads && sha256sum -- *)
+            echo '```'
+            echo
+            echo "</details>"
+          } > release.md
+          cat release.md
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -141,4 +307,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" downloads/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "$title ${GITHUB_REF_NAME#v}" \
-            --generate-notes
+            --notes-file release.md
