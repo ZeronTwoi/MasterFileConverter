@@ -5,6 +5,8 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using FileConverter.Core.Documents;
 using FileConverter.Core.Platform;
+using FileConverter.Core.Sheets;
+using FileConverter.Core.Slides;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using UglyToad.PdfPig;
@@ -18,7 +20,9 @@ namespace FileConverter.Core.Converters;
 
 /// <summary>
 /// Document conversions: PDF, Word (.docx, .doc), OpenDocument text, RTF, HTML, Markdown,
-/// e-books (EPUB) and plain text, each into the others, and any of them into pictures of its pages.
+/// e-books (EPUB) and plain text, each into the others; spreadsheets (Excel, OpenDocument, CSV)
+/// into each other, into PDF and out of a PDF's tables; presentations (PowerPoint, OpenDocument)
+/// into each other, into PDF and out of a PDF's pages; and any of them into pictures of its pages.
 ///
 /// There are two ways from one format to another, and which is taken depends on what is asked:
 /// • An office program — LibreOffice, or Microsoft Word where it is installed — keeps a document's
@@ -75,6 +79,9 @@ public static class DocumentConversion
     /// <summary>The formats an office program reads with their layout, and writes.</summary>
     private static bool IsOfficeText(string ext) => ext is "docx" or "doc" or "odt" or "rtf";
 
+    /// <summary>What a spreadsheet program writes from a workbook with everything in it: its formats, and the printed page.</summary>
+    private static bool IsOfficeSheetTarget(string ext) => ext is "pdf" or "xlsx" or "ods";
+
     /// <summary>
     /// May an office program do this conversion, or a part of it? (The Detailed settings offer the
     /// choice of engine for exactly these, and the self-test knows from it what needs one.)
@@ -83,11 +90,22 @@ public static class DocumentConversion
     {
         var src = FormatRegistry.Canonical(sourceExtension);
         var dst = FormatRegistry.Canonical(targetExtension);
-        if (FormatRegistry.GetDocumentKind(src) == DocumentKind.None) return false;
         if (dst is "png" or "jpg") dst = "pdf"; // pages are drawn from a PDF
-        if (src == "pdf") return IsOfficeText(dst);
-        if (src == "doc" || dst == "doc") return true; // the binary format is an office program's to read and to write
-        return IsOfficeText(src) && (IsOfficeText(dst) || dst is "pdf" or "txt");
+        switch (FormatRegistry.GetDocumentKind(src))
+        {
+            case DocumentKind.Pdf:
+                // (and LibreOffice can open a PDF as a presentation — on request, see FromPdfAsync)
+                return IsOfficeText(dst);
+            case DocumentKind.Text:
+                if (src == "doc" || dst == "doc") return true; // the binary format is an office program's to read and to write
+                return IsOfficeText(src) && (IsOfficeText(dst) || dst is "pdf" or "txt");
+            case DocumentKind.Sheet:
+                return src != "csv" && IsOfficeSheetTarget(dst);
+            case DocumentKind.Slides:
+                return dst is "pdf" or "pptx" or "odp";
+            default:
+                return false;
+        }
     }
 
     /// <summary>Converts one document file into another; returns what was produced (a folder, for Markdown with pictures).</summary>
@@ -100,6 +118,10 @@ public static class DocumentConversion
                 return await FromPdfAsync(input, output, dst, options, ct);
             case DocumentKind.Text:
                 return await FromTextDocumentAsync(input, src, output, dst, options, ct);
+            case DocumentKind.Sheet:
+                return await FromSpreadsheetAsync(input, src, output, dst, options, ct);
+            case DocumentKind.Slides:
+                return await FromPresentationAsync(input, src, output, dst, options, ct);
             default:
                 throw Unsupported(src, dst);
         }
@@ -124,9 +146,109 @@ public static class DocumentConversion
             case "html" or "md" or "epub":
                 return WriteBuiltIn(PdfTextReader.ReadFile(input, ct), input, output, dst, options);
 
+            case "pptx" or "odp":
+            {
+                // On request LibreOffice opens the PDF as a presentation with text that can be edited — close
+                // to the pages in look, not exact. Left to itself the app makes slides that show the pages.
+                if (options.Detail.Is(K.Engine, "libreoffice"))
+                {
+                    if (ToolLocator.LibreOfficePath == null)
+                        throw new FriendlyException("LibreOffice is selected under Detailed settings but is not installed (libreoffice.org).");
+                    if (await TryLibreOfficeAsync(input, output, dst, inputFilter: "impress_pdf_import", ct)) return output;
+                    throw new FriendlyException("LibreOffice could not open this PDF as a presentation.");
+                }
+
+                var deck = PdfSlides.Read(input, options, ct);
+                try
+                {
+                    if (dst == "pptx") PptxWriter.Write(deck, output);
+                    else OdpWriter.Write(deck, output);
+                    return output;
+                }
+                finally
+                {
+                    deck.Close?.Invoke();
+                }
+            }
+
+            case "xlsx" or "ods" or "csv":
+            {
+                // a workbook gets a sheet for every page unless told otherwise; a CSV file is one table, so one sheet
+                bool sheetPerPage = options.Detail.Text(K.Sheets) switch
+                {
+                    "pages" => true,
+                    "one" => false,
+                    _ => dst != "csv"
+                };
+                return WriteSheets(PdfTableReader.ReadFile(input, sheetPerPage, ct), input, output, dst, options);
+            }
+
             default:
                 throw Unsupported("pdf", dst);
         }
+    }
+
+    // ---------- spreadsheets ----------
+
+    private static async Task<string> FromSpreadsheetAsync(string input, string src, string output, string dst,
+        ConversionOptions options, CancellationToken ct)
+    {
+        // A spreadsheet program prints a workbook the way it is set up to be printed, and carries its
+        // formatting, formulas and charts from one format to the other. (Not for CSV: how its numbers
+        // and letters are to be read is worked out here, where a program would go by the system's settings.)
+        if (src != "csv" && IsOfficeSheetTarget(dst) && await TryOfficeEnginesAsync(input, output, src, dst, options, ct))
+            return output;
+
+        var workbook = src switch
+        {
+            "xlsx" or "xls" => ExcelReader.ReadFile(input),
+            "ods" => OdsReader.ReadFile(input),
+            "csv" => CsvReader.ReadFile(input),
+            _ => throw Unsupported(src, dst)
+        };
+        ct.ThrowIfCancellationRequested();
+        return WriteSheets(workbook, input, output, dst, options);
+    }
+
+    /// <summary>Writes a workbook with the built-in writers; returns the file, or the folder of a CSV file per sheet.</summary>
+    private static string WriteSheets(Workbook workbook, string input, string output, string dst, ConversionOptions options)
+    {
+        var title = Path.GetFileNameWithoutExtension(input);
+        switch (dst)
+        {
+            case "xlsx": XlsxWriter.Write(workbook, output); break;
+            case "ods": OdsWriter.Write(workbook, output); break;
+            case "csv": return CsvWriter.Write(workbook, output, options);
+            case "html": SheetHtmlWriter.Write(workbook, output, title); break;
+            case "pdf": SheetPdfWriter.Write(workbook, output, options, title); break;
+            default: throw Unsupported(FormatRegistry.GetExtension(input), dst);
+        }
+        return output;
+    }
+
+    // ---------- presentations ----------
+
+    private static async Task<string> FromPresentationAsync(string input, string src, string output, string dst,
+        ConversionOptions options, CancellationToken ct)
+    {
+        // A presentation program draws the slides with their design: theme, backgrounds, shapes, fonts.
+        if (await TryOfficeEnginesAsync(input, output, src, dst, options, ct)) return output;
+
+        if (src == "ppt")
+            throw new FriendlyException(
+                "Converting legacy .ppt files requires Microsoft PowerPoint or LibreOffice (free, libreoffice.org). Install one and try again.");
+
+        var deck = src == "pptx" ? PptxReader.ReadFile(input) : OdpReader.ReadFile(input);
+        ct.ThrowIfCancellationRequested();
+        deck.Title ??= Path.GetFileNameWithoutExtension(input);
+        switch (dst)
+        {
+            case "pdf": SlidePdfWriter.Write(deck, output, Path.GetFileNameWithoutExtension(input)); break;
+            case "pptx": PptxWriter.Write(deck, output); break;
+            case "odp": OdpWriter.Write(deck, output); break;
+            default: throw Unsupported(src, dst);
+        }
+        return output;
     }
 
     // ---------- text documents ----------
@@ -334,6 +456,13 @@ public static class DocumentConversion
         if (allowed.Office && await TryOfficeAutomationAsync(input, output, src, dst, ct)) return true;
         return false;
     }
+
+    /// <summary>
+    /// Has an office program write a file in one of the old binary formats, which nothing here
+    /// writes: how the self-test comes by a sample of a format the app only reads.
+    /// </summary>
+    internal static Task<bool> WriteWithOfficeAsync(string input, string output, CancellationToken ct) =>
+        TryOfficeEnginesAsync(input, output, FormatRegistry.GetExtension(input), FormatRegistry.GetExtension(output), new ConversionOptions(), ct);
 
     /// <summary>PDF → editable document: Word reflows the text best, LibreOffice keeps the look.</summary>
     private static async Task<bool> TryPdfImportAsync(string input, string output, string dst,

@@ -19,7 +19,11 @@ public enum DocumentKind
     /// <summary>Fixed pages: a PDF.</summary>
     Pdf,
     /// <summary>Running text: Word, OpenDocument text, RTF, HTML, Markdown, e-books, plain text.</summary>
-    Text
+    Text,
+    /// <summary>Tables of cells: Excel, OpenDocument spreadsheets, comma-separated text.</summary>
+    Sheet,
+    /// <summary>Slides: PowerPoint, OpenDocument presentations.</summary>
+    Slides
 }
 
 /// <summary>
@@ -38,7 +42,9 @@ public static class FormatRegistry
     private static readonly string[] VideoOutputs = ["mp4", "mkv", "avi", "webm", "mov"];
 
     private static readonly string[] TextDocuments = ["txt", "md", "log", "rtf", "html", "htm", "docx", "doc", "odt", "epub"];
-    private static readonly string[] DocumentInputs = ["pdf", .. TextDocuments];
+    private static readonly string[] Spreadsheets = ["xlsx", "xls", "ods", "csv"];
+    private static readonly string[] Presentations = ["pptx", "ppt", "odp"];
+    private static readonly string[] DocumentInputs = ["pdf", .. TextDocuments, .. Spreadsheets, .. Presentations];
 
     /// <summary>What running text can be written as, the most asked-for first (the first is what a new file is set to).</summary>
     private static readonly string[] TextOutputs = ["pdf", "docx", "odt", "rtf", "txt", "html", "md", "epub", "doc"];
@@ -68,6 +74,8 @@ public static class FormatRegistry
         ext = ext.ToLowerInvariant();
         if (ext == "pdf") return DocumentKind.Pdf;
         if (TextDocuments.Contains(ext)) return DocumentKind.Text;
+        if (Spreadsheets.Contains(ext)) return DocumentKind.Sheet;
+        if (Presentations.Contains(ext)) return DocumentKind.Slides;
         return DocumentKind.None;
     }
 
@@ -132,8 +140,20 @@ public static class FormatRegistry
         switch (GetDocumentKind(ext))
         {
             case DocumentKind.Pdf:
-                // back into something that can be edited, or its text and structure in another form
-                foreach (var target in new[] { "docx", "txt", "html", "md", "rtf", "odt", "epub", "doc" }) yield return target;
+                // back into something that can be edited, its text and structure in another form, or its tables
+                foreach (var target in new[] { "docx", "xlsx", "pptx", "txt", "html", "md", "rtf", "odt", "ods", "odp", "csv", "epub", "doc" }) yield return target;
+                break;
+
+            case DocumentKind.Slides:
+                // (the old binary .ppt is read, not written)
+                foreach (var target in new[] { "pdf", "pptx", "odp" })
+                    if (target != ext) yield return target;
+                break;
+
+            case DocumentKind.Sheet:
+                // (the old binary .xls is read, not written)
+                foreach (var target in new[] { "pdf", "xlsx", "ods", "csv", "html" })
+                    if (target != ext) yield return target;
                 break;
 
             case DocumentKind.Text:

@@ -20,7 +20,7 @@
 #endif
 
 ; every file type the app reads (FormatRegistry.Inputs - a test keeps the two the same)
-#define Types "jpg|jpeg|png|gif|webp|bmp|tif|tiff|heic|ico|mp3|wav|flac|aac|ogg|m4a|wma|opus|mp4|mkv|avi|webm|mov|wmv|flv|ts|m4v|txt|pdf|doc|docx|md|log|rtf|html|htm|odt|epub|zip|7z|rar|tar|gz|tgz|bz2"
+#define Types "jpg|jpeg|png|gif|webp|bmp|tif|tiff|heic|ico|mp3|wav|flac|aac|ogg|m4a|wma|opus|mp4|mkv|avi|webm|mov|wmv|flv|ts|m4v|txt|pdf|doc|docx|md|log|rtf|html|htm|odt|epub|xlsx|xls|ods|csv|pptx|ppt|odp|zip|7z|rar|tar|gz|tgz|bz2"
 
 #define Program ProgramName + ".exe"
 ; the same program for a terminal (see FcArrangeDownload in FileConverter.csproj)

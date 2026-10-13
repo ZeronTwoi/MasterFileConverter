@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using FileConverter.Core.Converters;
+using FileConverter.Core.Platform;
 using ImageMagick;
 using ImageMagick.Drawing;
 using QuestPDF.Fluent;
@@ -170,6 +171,8 @@ public static class SelfTest
             return "no office program (Word or LibreOffice) is installed";
         if (sourceExt == "doc" && engine == FileCategory.Document && chosenEngine == "builtin")
             return "only an office program reads the old .doc format";
+        if (sourceExt == "ppt" && engine == FileCategory.Document && chosenEngine == "builtin")
+            return "only an office program reads the old .ppt format";
         return null;
     }
 
@@ -387,6 +390,24 @@ public static class SelfTest
         samples.Add(Written("odt", path => Documents.OdtWriter.Write(rich, path)));
         samples.Add(Written("epub", path => Documents.EpubWriter.Write(rich, path, "Article")));
 
+        // Spreadsheets: text, a number, a date and a second sheet in each.
+        var workbook = SampleWorkbook();
+        Sample Table(string ext, Action<string> write)
+        {
+            var path = Path.Combine(dir, $"figures.{ext}");
+            write(path);
+            return new Sample(ext, ext, path);
+        }
+        samples.Add(Table("xlsx", path => Sheets.XlsxWriter.Write(workbook, path)));
+        samples.Add(Table("ods", path => Sheets.OdsWriter.Write(workbook, path)));
+        samples.Add(Table("xls", path =>
+        {
+            using var packed = new GZipStream(new MemoryStream(Convert.FromBase64String(OldExcelWorkbook)), CompressionMode.Decompress);
+            using var file = File.Create(path);
+            packed.CopyTo(file);
+        }));
+        samples.Add(Table("csv", path => File.WriteAllText(path, "Item,Count,When\r\nMerhaba çay,12.5,2026-10-13\r\nTotal,25,\r\n", new System.Text.UTF8Encoding(true))));
+
         var docx = Path.Combine(dir, "letter.docx");
         using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(docx,
                    DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
@@ -400,6 +421,32 @@ public static class SelfTest
             main.Document.Save();
         }
         samples.Add(new Sample("docx", "docx", docx));
+
+        // Presentations: a title slide, and a slide with bullets, a picture and a table.
+        var deck = SampleDeck();
+        var pptx = Path.Combine(dir, "talk.pptx");
+        Slides.PptxWriter.Write(deck, pptx);
+        samples.Add(new Sample("pptx", "pptx", pptx) { Frames = deck.Slides.Count });
+        var odp = Path.Combine(dir, "talk.odp");
+        Slides.OdpWriter.Write(deck, odp);
+        samples.Add(new Sample("odp", "odp", odp) { Frames = deck.Slides.Count });
+
+        // the old binary .ppt can only be written by an office program
+        var pptSample = new Sample("ppt", "ppt", null, "no office program (PowerPoint or LibreOffice) to make a .ppt sample");
+        if (ToolLocator.LibreOfficePath != null || PlatformServices.Current.OfficeAutomation?.CanConvert("pptx", "ppt") == true)
+        {
+            try
+            {
+                var pptPath = Path.Combine(dir, "talk.ppt");
+                if (await DocumentConversion.WriteWithOfficeAsync(pptx, pptPath, ct) && IsOleDocument(pptPath))
+                    pptSample = new Sample("ppt", "ppt", pptPath) { Frames = deck.Slides.Count };
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                pptSample = pptSample with { Missing = Shorten(ex.Message) };
+            }
+        }
+        samples.Add(pptSample);
 
         // five pages: enough for the page pictures to be shared out among worker processes
         const int pdfPages = 5;
@@ -463,6 +510,80 @@ public static class SelfTest
         document.Blocks.Add(table);
         document.Blocks.Add(picture);
         return document;
+    }
+
+    /// <summary>
+    /// A workbook in Excel's old binary format (.xls): the same cells as <see cref="SampleWorkbook"/>.
+    /// Nothing the app carries writes that format (it only reads it), so this sample is kept
+    /// ready-made, compressed; it was saved once with LibreOffice.
+    /// </summary>
+    private const string OldExcelWorkbook =
+        "H4sIAAAAAAACCu1YXWhcRRQ+c/cnd/O3N39aWxtvq23+S8UHI1oTm7Y2YGzRSIsE7GZzN4ndzZbdDRgwuk0tFLSgVvDBQqnEhyL4g6AP" +
+        "Kibggw+K0tIHxYfUlyKK3YoihSTrN+fO7t6uG9ndRsGas3wzd878zzlzzpz95uu6hbPvr79EeXQ/uWg57SOvgycAX6ZgEGmKt5xOpzPs" +
+        "9Br9p2hJ5VKGbsjPA0iZVwC6km2lytfo5qPHKIpfgkzaTRPIYzRFpdAt0BjneMX0WS6yXbG0Nn/580v7Le24Cyh0/6W9l/e/CqgGaoBa" +
+        "wG+7AKoD6oEGoBFoYp0guhVYB9wGrAc2ALcDG4Fm4A7ABDYBm4E7gbuALWp9LSqXaMd3B9CpeNvW7NGqkU+HFL0e+rjmSylylv0laMR7" +
+        "7nnWix+AIToidaMvEA6a/xbt5DUEhFzDHJR0h3BDVzU6DdTSu8z/hNMdrH+gXjK7lU4f1Hp59Sc53cxpLVJBH3Gf75hzNzTzC3l/nn+Z" +
+        "r8Gb5BEPwQKOU4DC+bW0mrXN9L2jVlCF6OOacRrmVs3uapqVd/Bha8KKBcLN7jp6S96/KdBQVyQy1DUyssAXbpZ+T5uOyz1nSr4cl/m/" +
+        "FcfXSuTT/44/i7MrdM4ddvtUPr9tBX7nCvz2Ffi+gnwP1IHXs5jjn9JwSZOUlrmRdHFel/RyXp90c96QrOC8MelJH+KrcBwm3ZRWH2M+" +
+        "Hghbcck4UWEzHo0mrPhLJK+eoHmhA0SDJwX9BEWFC0g9yXN7U3wyuu1GNMqFBsLxfQ9VpeRV/QwNdToq4Fr0OdGLtJearxq2c9Gh5Dqc" +
+        "h/4H/MsiDbJB8trOqT9hRbDSvujkRALFA2PWBNzSgBUbCwwHzMuBKVQORhOB8MYcNxSLRszEmGXGrWB0YsSMj1lWIg2XptM5t+3SgnoT" +
+        "kJNsk8o16fds+2hcZx+rsaURbF/akzrenoHhFs9dPT8wvL/nKeYnKTfiFikYnMFR1My727lHB6cz3DbjN48x7wVOt6L/lV8kXe5pcXy3" +
+        "4vtCy/T5lukrPW2O77OwcgKrIhaVRp2iU6yr9h6bP7TQk8kFPYEanaZ520Rv1Pg5l2XZS1Tkyhp+M9W5MgQrZnS/OplazlzZVNeMzLew" +
+        "TbCfeYJ5jdfxlHpkeUv8vrBfFKRKAiWRLWl81nZJcEs556ew+4Jbvtggz+/VC3LNso3GbeSZP6dV8gn7KYTSz7RfjpTaa0sspSvFlE0x" +
+        "Zmq73S/VynxfyijwdtKokvvJPvLWPKjV04de2/0QPcASkK8cvzodtU+iUWj1qO4cSGTeaze7noU2OfXsr3oksmlGj0RB/fDkydB0ylAv" +
+        "Q4a6Q4Z04zIshwResq5K+w1v6Jptyu2qPfLNPDAejEXj0VDC3P1M0Aqb993bNRgYtsJhi1Vk53go1H0jsYOw7XPZtJwm1oMC49LC8TO/" +
+        "Xts3Zrz9ik4dLR98K2XzmoothDpt2XOvijMOqnMcUfHGERVzPKvijhOq/Y9LdgwhJbFnfHQyZsW5LOu2q3EzVMz3P7F/tnIXv7p4etsG" +
+        "49Tr2H/ntXd2SZ+axxtScVLGWRqOPa7EX01azfif15mnw4X6yFs1V2V/H8DsMTqM54Rcx+GS11/PnsqOXdMlxNWP+DJ62od5I9C1fVjD" +
+        "02XN73LE4MX02Qr0Z+/JPrz7rbLlJ/1bqfF/q4rV1aOPJrH/COIPKft+aEGIZSI5CcQiUXD+bix7fk8J598GfJ6dfxdmCPIaLNbA0tbT" +
+        "Xcb+u4DE2v8/TH8CgUgirQAYAAA=";
+
+    private static Slides.Deck SampleDeck()
+    {
+        using var image = Picture();
+        var picture = Documents.Picture.Load(image.ToByteArray(MagickFormat.Png), "A sample picture")!;
+
+        Slides.SlideText Text(double x, double y, double width, double height, bool title, params (string Text, int Level, bool Bullet, double Size)[] lines)
+        {
+            var box = new Slides.SlideText { X = x, Y = y, Width = width, Height = height, IsTitle = title, Anchor = title ? Slides.VerticalAnchor.Middle : Slides.VerticalAnchor.Top };
+            foreach (var line in lines)
+            {
+                var paragraph = new Slides.SlideParagraph { Level = line.Level, Bullet = line.Bullet, FontSize = line.Size, Align = title ? Documents.TextAlign.Center : Documents.TextAlign.Start };
+                paragraph.Runs.Add(new Documents.TextRun(line.Text));
+                box.Paragraphs.Add(paragraph);
+            }
+            return box;
+        }
+
+        var deck = new Slides.Deck { Title = "Talk" };
+        var first = new Slides.Slide();
+        first.Items.Add(Text(80, 160, 800, 110, true, ("Merhaba sunum", 0, false, 54)));
+        first.Items.Add(Text(80, 290, 800, 60, true, ("çğıöşü ÇĞİÖŞÜ", 0, false, 24)));
+        deck.Slides.Add(first);
+
+        var second = new Slides.Slide();
+        second.Items.Add(Text(50, 30, 860, 70, true, ("Merhaba again", 0, false, 40)));
+        second.Items.Add(Text(50, 120, 420, 220, false, ("The quick brown fox", 0, true, 24), ("jumps over", 1, true, 20), ("the lazy dog", 0, true, 24)));
+        second.Items.Add(new Slides.SlidePicture(picture) { X = 520, Y = 120, Width = 320, Height = 240 });
+        var table = new Slides.SlideTable { X = 50, Y = 380, Width = 420, Height = 80, FontSize = 16 };
+        table.Rows.Add(["Item", "Count"]);
+        table.Rows.Add(["fox", "1"]);
+        second.Items.Add(table);
+        deck.Slides.Add(second);
+        return deck;
+    }
+
+    private static Sheets.Workbook SampleWorkbook()
+    {
+        var workbook = new Sheets.Workbook { Title = "Figures" };
+        var sales = new Sheets.Sheet("Sales");
+        sales.Rows.Add([Sheets.Cell.OfText("Item"), Sheets.Cell.OfText("Count"), Sheets.Cell.OfText("When")]);
+        sales.Rows.Add([Sheets.Cell.OfText("Merhaba çay"), Sheets.Cell.OfNumber(12.5), Sheets.Cell.OfDate(new DateTime(2026, 10, 13))]);
+        sales.Rows.Add([Sheets.Cell.OfText("Total"), Sheets.Cell.OfNumber(25)]);
+        var notes = new Sheets.Sheet("Notes");
+        notes.Rows.Add([Sheets.Cell.OfText("Merhaba from the second sheet")]);
+        workbook.Sheets.Add(sales);
+        workbook.Sheets.Add(notes);
+        return workbook;
     }
 
     private static bool IsOleDocument(string path)
@@ -567,6 +688,16 @@ public static class SelfTest
             return Size(new FileInfo(file).Length) + (Directory.Exists(produced) ? " · with pictures" : "");
         }
 
+        if (target == "csv")
+        {
+            // a workbook of several sheets becomes a folder with a file for each
+            var files = Directory.Exists(produced) ? Directory.GetFiles(produced, "*.csv") : [produced];
+            if (files.Length == 0) throw new InvalidOperationException("the output folder is empty");
+            var text = string.Join("\n", files.Select(File.ReadAllText));
+            RequireMarker(text);
+            return Directory.Exists(produced) ? $"{files.Length} files" : Size(new FileInfo(produced).Length);
+        }
+
         if (Directory.Exists(produced))
         {
             var files = Directory.GetFiles(produced, "*." + target);
@@ -643,6 +774,48 @@ public static class SelfTest
             case "odt":
                 RequireMarker(ZippedText(produced, "application/vnd.oasis.opendocument.text", name => name == "content.xml"));
                 break;
+
+            case "ods":
+                RequireMarker(ZippedText(produced, "application/vnd.oasis.opendocument.spreadsheet", name => name == "content.xml"));
+                break;
+
+            case "odp":
+            {
+                var slides = ZippedText(produced, "application/vnd.oasis.opendocument.presentation", name => name == "content.xml");
+                // slides made from a PDF show its pages as pictures: there the pages are counted instead
+                if (sample.Extension == "pdf")
+                {
+                    int pages = Slides.OdpReader.ReadFile(produced).Slides.Count;
+                    if (pages != sample.Frames) throw new InvalidOperationException($"expected {sample.Frames} slides, got {pages}");
+                }
+                else RequireMarker(slides);
+                break;
+            }
+
+            case "pptx":
+            {
+                var deck = Slides.PptxReader.ReadFile(produced);
+                if (deck.Slides.Count != sample.Frames)
+                    throw new InvalidOperationException($"expected {sample.Frames} slides, got {deck.Slides.Count}");
+                // slides made from a PDF show its pages as pictures — unless LibreOffice made them, as text that can be edited
+                if (sample.Extension != "pdf" || deck.Slides.Any(slide => !slide.Items.OfType<Slides.SlidePicture>().Any()))
+                {
+                    RequireMarker(string.Join(" ", deck.Slides.SelectMany(slide => slide.Items).OfType<Slides.SlideText>()
+                        .SelectMany(text => text.Paragraphs).Select(paragraph => Documents.RichDocument.PlainText(paragraph.Runs))));
+                }
+                detail += $" · {deck.Slides.Count} slide(s)";
+                break;
+            }
+
+            case "xlsx":
+            {
+                var cells = Sheets.ExcelReader.ReadFile(produced).Sheets.SelectMany(sheet => sheet.Rows).SelectMany(row => row).ToList();
+                RequireMarker(string.Join(" ", cells.Select(cell => cell.Text)));
+                // what was a number in a spreadsheet is still one
+                if (sample.Extension is "ods" or "xls" or "csv" && !cells.Any(cell => cell.Kind == Sheets.CellKind.Number && cell.Number == 12.5))
+                    throw new InvalidOperationException("the numbers became text");
+                break;
+            }
 
             case "epub":
                 RequireMarker(ZippedText(produced, "application/epub+zip", name => name.EndsWith(".xhtml") || name.EndsWith(".html")));

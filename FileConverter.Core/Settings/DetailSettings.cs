@@ -49,6 +49,8 @@ public static class SettingKeys
     public const string Margin = "margin";
     public const string FontSize = "fontSize";
     public const string Engine = "engine";
+    public const string Sheets = "sheets";
+    public const string Separator = "separator";
 
     // archives
     public const string Level = "level";

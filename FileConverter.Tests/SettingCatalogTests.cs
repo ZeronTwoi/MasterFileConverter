@@ -63,7 +63,7 @@ public class SettingCatalogTests
     [Fact]
     public void EveryOfferedConversionHasSettingsThatAreWellFormed()
     {
-        var sources = new[] { "jpg", "png", "gif", "webp", "heic", "mp3", "wav", "mp4", "mkv", "txt", "md", "pdf", "docx", "doc", "zip", "7z", "xyz" };
+        var sources = new[] { "jpg", "png", "gif", "webp", "heic", "mp3", "wav", "mp4", "mkv", "txt", "md", "pdf", "docx", "doc", "rtf", "html", "odt", "epub", "xlsx", "xls", "ods", "csv", "pptx", "ppt", "odp", "zip", "7z", "xyz" };
         foreach (var source in sources)
         foreach (var target in FormatRegistry.GetTargets(source, rarOutputAvailable: true))
         foreach (var merging in new[] { false, true })

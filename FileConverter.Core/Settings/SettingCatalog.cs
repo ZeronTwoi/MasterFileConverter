@@ -105,6 +105,7 @@ public static class SettingCatalog
                 // a document's pages as pictures: drawn from a PDF, which anything but a PDF is made into first
                 PagesFromPdf(list, target);
                 if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, "pdf")) DocumentEngine(list);
+                else if (FormatRegistry.GetDocumentKind(sourceExtension) == DocumentKind.Sheet) PdfFromSheet(list);
                 else if (sourceExtension != "pdf") PdfFromText(list);
             }
             else Picture(list, target, resize: true, metadata: true);
@@ -127,7 +128,18 @@ public static class SettingCatalog
             if (source == FileCategory.Image) PdfFromPictures(list);
             // what an office program lays out follows the document's own page setup; the built-in converter asks
             else if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, target)) DocumentEngine(list);
+            else if (FormatRegistry.GetDocumentKind(sourceExtension) == DocumentKind.Sheet) PdfFromSheet(list);
             else PdfFromText(list);
+        }
+        else if (target is "pptx" or "odp" && sourceExtension == "pdf")
+        {
+            SlidesFromPdf(list);
+        }
+        else if (target is "xlsx" or "ods" or "csv")
+        {
+            if (sourceExtension == "pdf") TablesFromPdf(list, target);
+            if (target == "csv") CsvSeparator(list);
+            if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, target)) DocumentEngine(list);
         }
         else if (source == FileCategory.Document && Converters.DocumentConversion.OfficeMayConvert(sourceExtension, target))
         {
@@ -513,6 +525,56 @@ public static class SettingCatalog
             Help = "Size of the text in points."
         });
     }
+
+    private static void PdfFromSheet(List<SettingDefinition> list)
+    {
+        const string group = "Pages";
+        list.Add(Choice(K.PageSize, "Page size", group, "Auto (A4)",
+            "The paper size of the PDF. A table too wide for the page upright is put on a page turned sideways.", PageSizes));
+        list.Add(new(K.Margin, "Margin (mm)", SettingKind.Number)
+        {
+            Group = group, Min = 0, Max = 100, AllowDecimals = true, Automatic = "Auto (12)",
+            Help = "White space around the table on every page."
+        });
+        list.Add(new(K.FontSize, "Text size (pt)", SettingKind.Number)
+        {
+            Group = group, Min = 4, Max = 72, AllowDecimals = true, Automatic = "Auto (9)",
+            Help = "Size of the text in points. Smaller text fits more columns on a page."
+        });
+    }
+
+    private static void SlidesFromPdf(List<SettingDefinition> list)
+    {
+        const string group = "Slides";
+        list.Add(Choice(K.Engine, "Convert with", group, "Auto (slides that show the pages)",
+            "The app makes every page a slide that shows it exactly as it is; its text is part of the picture. " +
+            "LibreOffice instead opens the PDF as a presentation whose text can be edited — the look is close to the pages, not exact.",
+            ("builtin", "Built-in (exact, as pictures)"), ("libreoffice", "LibreOffice (editable text)")));
+        list.Add(new(K.Dpi, "Resolution (dpi)", SettingKind.Number)
+        {
+            Group = group, Min = 36, Max = 1200, Automatic = "Auto (200)",
+            Help = "Dots per inch each page is drawn at for its slide: 150 is enough for a screen, 300 for print."
+        });
+        list.Add(new(K.Pages, "Pages", SettingKind.Text)
+        {
+            Group = group, Automatic = "All pages",
+            Help = "Which pages to turn into slides, for example 1-3, 7, 10- (page 10 to the end)."
+        });
+    }
+
+    private static void TablesFromPdf(List<SettingDefinition> list, string target) =>
+        list.Add(Choice(K.Sheets, "Pages", "Tables", target == "csv" ? "Auto (all in one file)" : "Auto (a sheet for every page)",
+            target == "csv"
+                ? "A CSV file holds one table. All pages can go into it one below the other, or every page into a file of its own."
+                : "Every page of the PDF can get a sheet of its own, or all pages go onto one sheet, one below the other.",
+            ("pages", target == "csv" ? "A file for every page" : "A sheet for every page"),
+            ("one", target == "csv" ? "All in one file" : "All on one sheet")));
+
+    private static void CsvSeparator(List<SettingDefinition> list) =>
+        list.Add(Choice(K.Separator, "Separator", "Tables", "Auto (comma)",
+            "The character between two fields. The comma is the standard; Excel in many countries opens a file by double-click " +
+            "only when it is separated by semicolons.",
+            ("comma", "Comma"), ("semicolon", "Semicolon"), ("tab", "Tab")));
 
     private static void DocumentEngine(List<SettingDefinition> list)
     {

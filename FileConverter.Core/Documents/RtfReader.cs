@@ -10,6 +10,8 @@ namespace FileConverter.Core.Documents;
 /// </summary>
 internal static class RtfReader
 {
+    private static readonly object Reading = new();
+
     public static RichDocument ReadFile(string path)
     {
         // an RTF file names the code page its accented letters are written in
@@ -23,7 +25,8 @@ internal static class RtfReader
         try
         {
             using var stream = new MemoryStream(bytes);
-            html = Rtf.ToHtml(stream);
+            // one file at a time: read side by side, RtfPipe now and then fails on a file it reads alone without fault
+            lock (Reading) html = Rtf.ToHtml(stream);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

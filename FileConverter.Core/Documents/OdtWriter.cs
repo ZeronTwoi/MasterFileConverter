@@ -35,7 +35,8 @@ internal sealed class OdfPackage : IDisposable
     public string AddPicture(Picture picture, int number)
     {
         var path = $"Pictures/image-{number:D3}.{picture.Format}";
-        Add(path, picture.Data, picture.Mime, compress: false);
+        // a JPEG is as small as it gets; a PNG written in a hurry still gives a little
+        Add(path, picture.Data, picture.Mime, compress: picture.Format == "png");
         return path;
     }
 

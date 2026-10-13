@@ -134,7 +134,7 @@ internal sealed partial class WindowsPlatform : PlatformBase
 
     public override IReadOnlyList<string> PdfFallbackFonts { get; } = ["Segoe UI", "Yu Gothic UI", "Microsoft YaHei"];
 
-    public override IOfficeAutomation OfficeAutomation { get; } = new WordAutomation();
+    public override IOfficeAutomation OfficeAutomation { get; } = new MicrosoftOffice();
 
     [LibraryImport("shlwapi.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int StrCmpLogicalW(string a, string b);

@@ -481,7 +481,7 @@ public class DocumentFormatTests(Samples samples) : IClassFixture<Samples>
         Assert.Single(body.Elements<DocumentFormat.OpenXml.Wordprocessing.Table>());
         Assert.Contains(body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Run>(), r => r.InnerText == "tomatoes" && r.RunProperties?.Bold != null);
         // what a validator would say of the file
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word).Select(e => $"{e.Path?.XPath}: {e.Description}").ToList();
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word, TestContext.Current.CancellationToken).Select(e => $"{e.Path?.XPath}: {e.Description}").ToList();
         Assert.True(errors.Count == 0, string.Join("\n", errors.Take(5)));
     }
 
@@ -492,7 +492,7 @@ public class DocumentFormatTests(Samples samples) : IClassFixture<Samples>
 
         using var word = WordprocessingDocument.Open(result.OutputPath, false);
         Assert.Single(word.MainDocumentPart!.ImageParts);
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word).Select(e => $"{e.Path?.XPath}: {e.Description}").ToList();
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator().Validate(word, TestContext.Current.CancellationToken).Select(e => $"{e.Path?.XPath}: {e.Description}").ToList();
         Assert.True(errors.Count == 0, string.Join("\n", errors.Take(5)));
     }
 
