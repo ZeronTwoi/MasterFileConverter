@@ -3,6 +3,7 @@ using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using FileConverter.Core.Documents;
 using FileConverter.Core.Platform;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -11,14 +12,22 @@ using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 using K = FileConverter.Core.Settings.SettingKeys;
 using QDocument = QuestPDF.Fluent.Document;
 using Document = DocumentFormat.OpenXml.Wordprocessing.Document;
+using Paragraph = DocumentFormat.OpenXml.Wordprocessing.Paragraph;
 
 namespace FileConverter.Core.Converters;
 
 /// <summary>
-/// Document conversions between txt/pdf/doc/docx (md and log are treated as text).
-/// Engine priority for fidelity: LibreOffice → Microsoft Word (where installed) → built-in
-/// text-level converters (PdfPig for PDF text extraction, QuestPDF for PDF
-/// creation, OpenXml for docx, RTF for legacy .doc output).
+/// Document conversions: PDF, Word (.docx, .doc), OpenDocument text, RTF, HTML, Markdown,
+/// e-books (EPUB) and plain text, each into the others, and any of them into pictures of its pages.
+///
+/// There are two ways from one format to another, and which is taken depends on what is asked:
+/// • An office program — LibreOffice, or Microsoft Word where it is installed — keeps a document's
+///   layout: fonts, columns, headers, everything on the page. It is used whenever both ends are
+///   formats such a program reads and writes (Word, OpenDocument, RTF, and PDF as a result).
+/// • The built-in converter keeps what a document says and how it is built: headings, bold and
+///   italic, lists, tables, pictures, links (see <see cref="RichDocument"/>). It needs nothing
+///   installed, is the only way for the formats office programs do not handle (Markdown, e-books,
+///   HTML read without going online), and stands in wherever no office program is there.
 /// </summary>
 public static class DocumentConversion
 {
@@ -29,96 +38,267 @@ public static class DocumentConversion
     private static async Task<ConversionResult> ConvertCoreAsync(string input, string output, ConversionOptions options,
         IProgress<double>? progress, CancellationToken ct)
     {
-        var src = FormatRegistry.GetExtension(input);
-        if (src is "md" or "log") src = "txt";
-        var dst = FormatRegistry.GetExtension(output);
+        var src = FormatRegistry.Canonical(FormatRegistry.GetExtension(input));
+        var dst = FormatRegistry.Canonical(FormatRegistry.GetExtension(output));
 
-        progress?.Report(0.1);
+        progress?.Report(0.05);
 
-        switch (src)
+        if (dst is "png" or "jpg")
         {
-            case "txt":
-                switch (dst)
-                {
-                    case "pdf": TextToPdf(TextFiles.Read(input), output, options); break;
-                    case "docx": TextToDocx(TextFiles.Read(input), output); break;
-                    case "doc":
-                    {
-                        // The office engines are handed a docx made here rather than the text file:
-                        // its encoding has been worked out already, and they would only guess at it.
-                        var text = TextFiles.Read(input);
-                        var staged = WorkFiles.NewPath("text", ".docx");
-                        try
-                        {
-                            TextToDocx(text, staged);
-                            if (!await TryOfficeEnginesAsync(staged, output, dst, options, progress, ct))
-                                TextToDocRtf(text, output);
-                        }
-                        finally
-                        {
-                            try { File.Delete(staged); } catch { /* best effort */ }
-                        }
-                        break;
-                    }
-                    default: throw Unsupported(src, dst);
-                }
-                break;
+            // one image per page; several pages get a "name pages" folder
+            if (src == "pdf")
+                return new ConversionResult(await PdfPageExport.ToImagesAsync(input, output, dst, options, progress, ct));
 
-            case "pdf":
-                switch (dst)
-                {
-                    case "png":
-                    case "jpg":
-                        // one image per page; multi-page PDFs get a "name pages" folder
-                        return new ConversionResult(
-                            await PdfPageExport.ToImagesAsync(input, output, dst, options, progress, ct));
-                    case "txt":
-                        await File.WriteAllTextAsync(output, PdfToText(input, ct), Encoding.UTF8, ct);
-                        break;
-                    case "docx":
-                        // Word imports PDFs with layout, LibreOffice as positioned text; the fallback is text-only.
-                        if (!await TryPdfImportAsync(input, output, dst, options, ct))
-                            TextToDocx(PdfToText(input, ct), output);
-                        break;
-                    case "doc":
-                        if (!await TryPdfImportAsync(input, output, dst, options, ct))
-                            TextToDocRtf(PdfToText(input, ct), output);
-                        break;
-                    default: throw Unsupported(src, dst);
-                }
-                break;
-
-            case "docx":
-                if (!await TryOfficeEnginesAsync(input, output, dst, options, progress, ct))
-                {
-                    var text = DocxToText(input);
-                    switch (dst)
-                    {
-                        case "txt": await File.WriteAllTextAsync(output, text, Encoding.UTF8, ct); break;
-                        case "pdf": TextToPdf(text, output, options); break;
-                        case "doc": TextToDocRtf(text, output); break;
-                        default: throw Unsupported(src, dst);
-                    }
-                }
-                break;
-
-            case "doc":
-                // Binary .doc needs a real Office engine to parse.
-                if (!await TryOfficeEnginesAsync(input, output, dst, options, progress, ct))
-                    throw new FriendlyException(
-                        "Converting legacy .doc files requires Microsoft Word or LibreOffice (free, libreoffice.org). Install one and try again.");
-                break;
-
-            default:
-                throw Unsupported(src, dst);
+            // any other document is first made into a PDF — the one form in which it has pages
+            var pages = WorkFiles.NewPath("pages", ".pdf");
+            try
+            {
+                await ConvertFileAsync(input, src, pages, "pdf", options, ct);
+                progress?.Report(0.5);
+                var half = progress == null ? null : new Progress<double>(p => progress.Report(0.5 + p / 2));
+                return new ConversionResult(await PdfPageExport.ToImagesAsync(pages, output, dst, options, half, ct));
+            }
+            finally
+            {
+                try { File.Delete(pages); } catch { /* best effort */ }
+            }
         }
 
+        var produced = await ConvertFileAsync(input, src, output, dst, options, ct);
         progress?.Report(1.0);
-        return new ConversionResult(output);
+        return new ConversionResult(produced);
     }
 
     private static FriendlyException Unsupported(string src, string dst) =>
         new($"Converting .{src} to .{dst} is not supported.");
+
+    /// <summary>The formats an office program reads with their layout, and writes.</summary>
+    private static bool IsOfficeText(string ext) => ext is "docx" or "doc" or "odt" or "rtf";
+
+    /// <summary>
+    /// May an office program do this conversion, or a part of it? (The Detailed settings offer the
+    /// choice of engine for exactly these, and the self-test knows from it what needs one.)
+    /// </summary>
+    public static bool OfficeMayConvert(string sourceExtension, string targetExtension)
+    {
+        var src = FormatRegistry.Canonical(sourceExtension);
+        var dst = FormatRegistry.Canonical(targetExtension);
+        if (FormatRegistry.GetDocumentKind(src) == DocumentKind.None) return false;
+        if (dst is "png" or "jpg") dst = "pdf"; // pages are drawn from a PDF
+        if (src == "pdf") return IsOfficeText(dst);
+        if (src == "doc" || dst == "doc") return true; // the binary format is an office program's to read and to write
+        return IsOfficeText(src) && (IsOfficeText(dst) || dst is "pdf" or "txt");
+    }
+
+    /// <summary>Converts one document file into another; returns what was produced (a folder, for Markdown with pictures).</summary>
+    private static async Task<string> ConvertFileAsync(string input, string src, string output, string dst,
+        ConversionOptions options, CancellationToken ct)
+    {
+        switch (FormatRegistry.GetDocumentKind(src))
+        {
+            case DocumentKind.Pdf:
+                return await FromPdfAsync(input, output, dst, options, ct);
+            case DocumentKind.Text:
+                return await FromTextDocumentAsync(input, src, output, dst, options, ct);
+            default:
+                throw Unsupported(src, dst);
+        }
+    }
+
+    // ---------- PDF → … ----------
+
+    private static async Task<string> FromPdfAsync(string input, string output, string dst, ConversionOptions options, CancellationToken ct)
+    {
+        switch (dst)
+        {
+            case "txt":
+                await File.WriteAllTextAsync(output, PdfToText(input, ct), Encoding.UTF8, ct);
+                return output;
+
+            case "docx" or "doc" or "odt" or "rtf":
+                // Word imports PDFs with layout, LibreOffice as positioned text; the built-in way rebuilds
+                // headings, paragraphs and pictures from where the letters stand.
+                if (await TryPdfImportAsync(input, output, dst, options, ct)) return output;
+                return WriteBuiltIn(PdfTextReader.ReadFile(input, ct), input, output, dst, options);
+
+            case "html" or "md" or "epub":
+                return WriteBuiltIn(PdfTextReader.ReadFile(input, ct), input, output, dst, options);
+
+            default:
+                throw Unsupported("pdf", dst);
+        }
+    }
+
+    // ---------- text documents ----------
+
+    private static async Task<string> FromTextDocumentAsync(string input, string src, string output, string dst,
+        ConversionOptions options, CancellationToken ct)
+    {
+        // Both ends are an office program's formats: it keeps the layout.
+        if (IsOfficeText(src) && (IsOfficeText(dst) || dst is "pdf" or "txt") &&
+            await TryOfficeEnginesAsync(input, output, src, dst, options, ct))
+            return output;
+
+        if (src == "doc")
+        {
+            // Only an office program reads the binary format. It is asked for a .docx, which is read here.
+            var staged = WorkFiles.NewPath("doc", ".docx");
+            try
+            {
+                if (!await TryOfficeEnginesAsync(input, staged, "doc", "docx", options, ct))
+                    throw new FriendlyException(
+                        "Converting legacy .doc files requires Microsoft Word or LibreOffice (free, libreoffice.org). Install one and try again.");
+                return await WriteAsync(DocxReader.ReadFile(staged), input, output, dst, options, ct);
+            }
+            finally
+            {
+                try { File.Delete(staged); } catch { /* best effort */ }
+            }
+        }
+
+        if (src is "txt" or "log")
+        {
+            // plain text has nothing to be laid out by: it keeps its own, simplest writers
+            var text = TextFiles.Read(input);
+            switch (dst)
+            {
+                case "pdf":
+                    TextToPdf(text, output, options);
+                    return output;
+                case "docx":
+                    TextToDocx(text, output);
+                    return output;
+                case "doc":
+                {
+                    // The office engines are handed a docx made here rather than the text file:
+                    // its encoding has been worked out already, and they would only guess at it.
+                    var staged = WorkFiles.NewPath("text", ".docx");
+                    try
+                    {
+                        TextToDocx(text, staged);
+                        if (!await TryOfficeEnginesAsync(staged, output, "docx", dst, options, ct))
+                            TextToDocRtf(text, output);
+                    }
+                    finally
+                    {
+                        try { File.Delete(staged); } catch { /* best effort */ }
+                    }
+                    return output;
+                }
+                default:
+                    return await WriteAsync(PlainText(text, Path.GetFileNameWithoutExtension(input)), input, output, dst, options, ct);
+            }
+        }
+
+        var document = src switch
+        {
+            "md" => MarkdownReader.ReadFile(input),
+            "html" => HtmlReader.ReadFile(input),
+            "rtf" => RtfReader.ReadFile(input),
+            "docx" => DocxReader.ReadFile(input),
+            "odt" => OdtReader.ReadFile(input),
+            "epub" => EpubReader.ReadFile(input),
+            _ => throw Unsupported(src, dst)
+        };
+        ct.ThrowIfCancellationRequested();
+        return await WriteAsync(document, input, output, dst, options, ct);
+    }
+
+    /// <summary>Plain text as a document: lines that follow one another are a paragraph, an empty line ends it.</summary>
+    private static RichDocument PlainText(string text, string title)
+    {
+        var document = new RichDocument { Title = title };
+        var lines = new List<Inline>();
+        void End()
+        {
+            if (lines.Count > 0) document.Blocks.Add(new Documents.Paragraph(lines));
+            lines = [];
+        }
+
+        foreach (var line in text.Replace("\r\n", "\n").Split('\n'))
+        {
+            if (line.Trim().Length == 0)
+            {
+                End();
+                continue;
+            }
+            if (lines.Count > 0) lines.Add(new Documents.LineBreak());
+            lines.Add(new TextRun(line));
+        }
+        End();
+        return document;
+    }
+
+    /// <summary>
+    /// Writes a document read by the built-in converter. A real ".doc" takes an office program — it
+    /// is handed a .docx made here; without one the result is RTF under the .doc name, which Word,
+    /// WordPad and LibreOffice open all the same.
+    /// </summary>
+    private static async Task<string> WriteAsync(RichDocument document, string input, string output, string dst,
+        ConversionOptions options, CancellationToken ct)
+    {
+        if (dst != "doc") return WriteBuiltIn(document, input, output, dst, options);
+
+        var staged = WorkFiles.NewPath("doc", ".docx");
+        try
+        {
+            DocxWriter.Write(document, staged);
+            if (!await TryOfficeEnginesAsync(staged, output, "docx", "doc", options, ct))
+                RtfWriter.Write(document, output);
+            return output;
+        }
+        finally
+        {
+            try { File.Delete(staged); } catch { /* best effort */ }
+        }
+    }
+
+    private static string WriteBuiltIn(RichDocument document, string input, string output, string dst, ConversionOptions options)
+    {
+        var title = Path.GetFileNameWithoutExtension(input);
+        switch (dst)
+        {
+            case "pdf": PdfWriter.Write(document, output, options, title); break;
+            case "docx": DocxWriter.Write(document, output); break;
+            case "odt": OdtWriter.Write(document, output); break;
+            case "rtf" or "doc": RtfWriter.Write(document, output); break;
+            case "html": XhtmlWriter.Write(document, output, title); break;
+            case "epub": EpubWriter.Write(document, output, title); break;
+            case "txt": PlainTextWriter.Write(document, output); break;
+            case "md": return WriteMarkdown(document, output);
+            default: throw Unsupported(FormatRegistry.GetExtension(input), dst);
+        }
+        return output;
+    }
+
+    /// <summary>
+    /// A Markdown file cannot hold pictures, only name them. A document with pictures therefore
+    /// becomes a folder: the text, and an "images" folder beside it that the text refers to.
+    /// </summary>
+    private static string WriteMarkdown(RichDocument document, string output)
+    {
+        if (!document.Pictures.Any())
+        {
+            MarkdownWriter.Write(document, output);
+            return output;
+        }
+
+        var folder = FrameExtraction.CreateOutputFolder(output, "markdown");
+        try
+        {
+            var name = ConversionService.FinalName(output);
+            var pictures = MarkdownWriter.Write(document, Path.Combine(folder, name));
+            Directory.CreateDirectory(Path.Combine(folder, "images"));
+            foreach (var (path, picture) in pictures)
+                File.WriteAllBytes(Path.Combine(folder, path.Replace('/', Path.DirectorySeparatorChar)), picture.Data);
+            return folder;
+        }
+        catch
+        {
+            FrameExtraction.DeleteFolderQuiet(folder);
+            throw;
+        }
+    }
 
     // ---------- office engines ----------
 
@@ -146,12 +326,12 @@ public static class DocumentConversion
         }
     }
 
-    private static async Task<bool> TryOfficeEnginesAsync(string input, string output, string dst,
-        ConversionOptions options, IProgress<double>? progress, CancellationToken ct)
+    private static async Task<bool> TryOfficeEnginesAsync(string input, string output, string src, string dst,
+        ConversionOptions options, CancellationToken ct)
     {
         var allowed = AllowedEngines(options);
-        if (allowed.LibreOffice && await TryLibreOfficeAsync(input, output, dst, inputFilter: null, ct)) { progress?.Report(0.9); return true; }
-        if (allowed.Office && await TryOfficeAutomationAsync(input, output, dst, ct)) { progress?.Report(0.9); return true; }
+        if (allowed.LibreOffice && await TryLibreOfficeAsync(input, output, dst, inputFilter: null, ct)) return true;
+        if (allowed.Office && await TryOfficeAutomationAsync(input, output, src, dst, ct)) return true;
         return false;
     }
 
@@ -160,12 +340,12 @@ public static class DocumentConversion
         ConversionOptions options, CancellationToken ct)
     {
         var allowed = AllowedEngines(options);
-        return (allowed.Office && await TryOfficeAutomationAsync(input, output, dst, ct)) ||
+        return (allowed.Office && await TryOfficeAutomationAsync(input, output, "pdf", dst, ct)) ||
                (allowed.LibreOffice && await TryLibreOfficeAsync(input, output, dst, inputFilter: "writer_pdf_import", ct));
     }
 
-    private static Task<bool> TryOfficeAutomationAsync(string input, string output, string dst, CancellationToken ct) =>
-        PlatformServices.Current.OfficeAutomation is { IsAvailable: true } office
+    private static Task<bool> TryOfficeAutomationAsync(string input, string output, string src, string dst, CancellationToken ct) =>
+        PlatformServices.Current.OfficeAutomation is { IsAvailable: true } office && office.CanConvert(src, dst)
             ? office.ConvertAsync(input, output, dst, ct)
             : Task.FromResult(false);
 
@@ -306,7 +486,7 @@ public static class DocumentConversion
         }
     }
 
-    // ---------- built-in fallbacks ----------
+    // ---------- plain text ----------
 
     private static string PdfToText(string input, CancellationToken ct)
     {
@@ -371,17 +551,6 @@ public static class DocumentConversion
         }
         main.Document = new Document(body);
         main.Document.Save();
-    }
-
-    private static string DocxToText(string input)
-    {
-        using var doc = WordprocessingDocument.Open(input, isEditable: false);
-        var body = doc.MainDocumentPart?.Document?.Body;
-        if (body == null) return "";
-        var sb = new StringBuilder();
-        foreach (var paragraph in body.Descendants<Paragraph>())
-            sb.AppendLine(paragraph.InnerText);
-        return sb.ToString();
     }
 
     /// <summary>

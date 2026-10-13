@@ -21,7 +21,7 @@ public static class FrameExtraction
     internal static string CreateOutputFolder(string outputFilePath, string suffix)
     {
         var dir = Path.GetDirectoryName(outputFilePath)!;
-        var baseName = Path.GetFileNameWithoutExtension(outputFilePath);
+        var baseName = Path.GetFileNameWithoutExtension(ConversionService.FinalName(outputFilePath));
         var candidate = Path.Combine(dir, $"{baseName} {suffix}");
         for (int i = 1; Directory.Exists(candidate) || File.Exists(candidate); i++)
             candidate = Path.Combine(dir, $"{baseName} {suffix} ({i})");

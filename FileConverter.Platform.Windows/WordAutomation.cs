@@ -47,10 +47,15 @@ internal sealed class WordAutomation : IOfficeAutomation
 
     public bool IsAvailable => _available ??= Type.GetTypeFromProgID("Word.Application") != null;
 
+    /// <summary>Word reads its own formats, OpenDocument text, RTF and PDF, and writes all of those.</summary>
+    public bool CanConvert(string sourceExtension, string targetExtension) =>
+        sourceExtension is "docx" or "doc" or "odt" or "rtf" or "pdf" &&
+        targetExtension is "pdf" or "docx" or "doc" or "odt" or "rtf" or "txt" && sourceExtension != targetExtension;
+
     /// <summary>Converts through Word. Returns false when Word is unavailable or the conversion failed.</summary>
     public async Task<bool> ConvertAsync(string input, string output, string targetExtension, CancellationToken ct)
     {
-        if (targetExtension is not ("pdf" or "docx" or "doc" or "txt") || !IsAvailable)
+        if (targetExtension is not ("pdf" or "docx" or "doc" or "odt" or "rtf" or "txt") || !IsAvailable)
             return false;
 
         var job = new Job(Path.GetFullPath(input), Path.GetFullPath(output), targetExtension,
@@ -165,6 +170,14 @@ internal sealed class WordAutomation : IOfficeAutomation
                     break;
                 case "docx":
                     Call(doc, "SaveAs2", ("FileName", job.Output), ("FileFormat", 16 /* wdFormatDocumentDefault */),
+                        ("AddToRecentFiles", false));
+                    break;
+                case "odt":
+                    Call(doc, "SaveAs2", ("FileName", job.Output), ("FileFormat", 23 /* wdFormatOpenDocumentText */),
+                        ("AddToRecentFiles", false));
+                    break;
+                case "rtf":
+                    Call(doc, "SaveAs2", ("FileName", job.Output), ("FileFormat", 6 /* wdFormatRTF */),
                         ("AddToRecentFiles", false));
                     break;
                 default:

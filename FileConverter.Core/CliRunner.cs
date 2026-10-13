@@ -45,7 +45,8 @@ public static class CliRunner
           --self-test             try every conversion on generated samples and report what works
               --filter <text>     only the cases whose name contains the text, e.g. "mp4" or "→ pdf"
               --keep              leave the samples and results in the temp folder afterwards
-          --update                look for a newer version of the app and install it
+              --engine builtin|libreoffice|office   convert documents with this engine only, not the best installed
+          --update               look for a newer version of the app and install it
               --from <file>       install it from a download that is already here, without going online
           --uninstall             remove the installed app, the engines it downloaded and its settings (Linux)
               --keep-settings     leave the settings for a later installation
@@ -314,8 +315,20 @@ public static class CliRunner
         int filterIndex = Array.IndexOf(args, "--filter");
         if (filterIndex >= 0 && filterIndex + 1 < args.Length) filter = args[filterIndex + 1];
         bool keep = args.Contains("--keep");
+        string? engine = null;
+        int engineIndex = Array.IndexOf(args, "--engine");
+        if (engineIndex >= 0)
+        {
+            engine = engineIndex + 1 < args.Length ? args[engineIndex + 1].ToLowerInvariant() : "";
+            if (engine is not ("builtin" or "libreoffice" or "office"))
+            {
+                Console.Error.WriteLine("--engine expects builtin, libreoffice or office.");
+                return 2;
+            }
+        }
 
         Console.WriteLine($"{AppInfo.DisplayName} {Version} self-test on {PlatformServices.Current.Name}");
+        if (engine != null) Console.WriteLine($"  Documents are converted with: {engine}");
         Console.WriteLine("  FFmpeg       " + (ToolLocator.FfmpegPath ?? "not found"));
         if (ToolLocator.FfmpegPath == null && ToolLocator.OutdatedFfmpeg is { } outdated)
             Console.WriteLine($"               passed over {outdated}: FFmpeg {ToolLocator.MinimumFfmpegMajor} or newer is needed — --setup-tools downloads it");
@@ -334,7 +347,7 @@ public static class CliRunner
         {
             // failures and skips as they happen; passes are summarised at the end
             if (result.Outcome != SelfTestOutcome.Passed) Console.WriteLine(Line(result));
-        }, CancellationToken.None);
+        }, CancellationToken.None, engine);
 
         Console.WriteLine();
         foreach (var result in results.Where(r => r.Outcome == SelfTestOutcome.Passed)) Console.WriteLine(Line(result));

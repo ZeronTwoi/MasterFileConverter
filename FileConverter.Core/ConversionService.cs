@@ -55,6 +55,14 @@ public sealed class ConversionService
         $"{Path.GetFileNameWithoutExtension(output)}.fc-{Guid.NewGuid().ToString("N")[..8]}{Path.GetExtension(output)}");
 
     /// <summary>
+    /// The file name a result finally has. A conversion that replaces an existing file is handed a
+    /// staging name; what it names after its output — a folder of pages, a file inside one — is
+    /// named after this instead.
+    /// </summary>
+    internal static string FinalName(string output) =>
+        System.Text.RegularExpressions.Regex.Replace(Path.GetFileName(output), @"\.fc-[0-9a-f]{8}(?=\.[^.]+$)", "");
+
+    /// <summary>
     /// Converts one file. The result's path is usually <paramref name="output"/>, but a
     /// folder when the conversion fans out (animated gif → frames, video → frame sequence,
     /// multi-page pdf → images).

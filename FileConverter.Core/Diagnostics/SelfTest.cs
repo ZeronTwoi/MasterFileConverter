@@ -36,8 +36,12 @@ public static class SelfTest
     /// Runs the whole matrix inside <paramref name="workDirectory"/> (created, and emptied first).
     /// <paramref name="filter"/> limits it to cases whose name contains the text, e.g. "mp4" or "→ pdf".
     /// </summary>
+    /// <param name="engine">
+    /// Has the document conversions done by this engine alone — "builtin", "libreoffice" or
+    /// "office" — instead of the best one installed, which is what otherwise hides the others.
+    /// </param>
     public static async Task<IReadOnlyList<SelfTestResult>> RunAsync(string workDirectory, string? filter,
-        Action<SelfTestResult>? report, CancellationToken ct)
+        Action<SelfTestResult>? report, CancellationToken ct, string? engine = null)
     {
         if (Directory.Exists(workDirectory)) Directory.Delete(workDirectory, recursive: true);
         var samplesDir = Path.Combine(workDirectory, "samples");
@@ -48,6 +52,8 @@ public static class SelfTest
         var samples = await CreateSamplesAsync(samplesDir, ct);
         var service = new ConversionService();
         var options = new ConversionOptions { Speed = SpeedPreset.Fast };
+        if (engine != null)
+            options = options.WithDetail(new Settings.DetailSettings(new Dictionary<string, string> { [Settings.SettingKeys.Engine] = engine }));
         bool rar = ToolLocator.RarPath != null;
 
         var results = new List<SelfTestResult>();
@@ -73,7 +79,7 @@ public static class SelfTest
                     Add(new SelfTestResult(name, SelfTestOutcome.Skipped, sample.Missing ?? "no sample", TimeSpan.Zero));
                     continue;
                 }
-                if (MissingEngine(sourceExt, target) is { } reason)
+                if (MissingEngine(sourceExt, target, engine) is { } reason)
                 {
                     Add(new SelfTestResult(name, SelfTestOutcome.Skipped, reason, TimeSpan.Zero));
                     continue;
@@ -112,7 +118,7 @@ public static class SelfTest
             {
                 var name = $"3 images → one {target}";
                 if (!Wanted(name)) continue;
-                if (MissingEngine("png", target) is { } reason)
+                if (MissingEngine("png", target, engine) is { } reason)
                 {
                     Add(new SelfTestResult(name, SelfTestOutcome.Skipped, reason, TimeSpan.Zero));
                     continue;
@@ -151,7 +157,7 @@ public static class SelfTest
     }
 
     /// <summary>Why this conversion can't run here, or null when everything it needs is present.</summary>
-    private static string? MissingEngine(string sourceExt, string target)
+    private static string? MissingEngine(string sourceExt, string target, string? chosenEngine)
     {
         var engine = FormatRegistry.GetEngine(sourceExt, target);
         if (engine == FileCategory.Video && (ToolLocator.FfmpegPath == null || ToolLocator.FfprobePath == null))
@@ -162,6 +168,8 @@ public static class SelfTest
             return "7-Zip is not installed";
         if (sourceExt == "doc" && ToolLocator.LibreOfficePath == null && !ToolLocator.OfficeAutomationAvailable)
             return "no office program (Word or LibreOffice) is installed";
+        if (sourceExt == "doc" && engine == FileCategory.Document && chosenEngine == "builtin")
+            return "only an office program reads the old .doc format";
         return null;
     }
 
@@ -359,9 +367,25 @@ public static class SelfTest
         foreach (var ext in new[] { "txt", "md", "log" })
         {
             var path = Path.Combine(dir, $"notes.{ext}");
-            await File.WriteAllTextAsync(path, (ext == "md" ? "# Notes\n\n" : "") + SampleText, new System.Text.UTF8Encoding(false), ct);
+            var text = ext == "md"
+                ? "# Notes\n\n" + SampleText.Replace("quick", "**quick**") + "\n- one\n- two\n\n| Item | Count |\n|---|---|\n| fox | 1 |\n"
+                : SampleText;
+            await File.WriteAllTextAsync(path, text, new System.Text.UTF8Encoding(false), ct);
             samples.Add(new Sample(ext, ext, path));
         }
+
+        // The formats the built-in converter reads: a heading, formatted text, a list, a table and a picture in each.
+        var rich = SampleDocument();
+        Sample Written(string ext, Action<string> write)
+        {
+            var path = Path.Combine(dir, $"article.{ext}");
+            write(path);
+            return new Sample(ext, ext, path);
+        }
+        samples.Add(Written("rtf", path => Documents.RtfWriter.Write(rich, path)));
+        samples.Add(Written("html", path => Documents.XhtmlWriter.Write(rich, path, "Article")));
+        samples.Add(Written("odt", path => Documents.OdtWriter.Write(rich, path)));
+        samples.Add(Written("epub", path => Documents.EpubWriter.Write(rich, path, "Article")));
 
         var docx = Path.Combine(dir, "letter.docx");
         using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(docx,
@@ -412,6 +436,33 @@ public static class SelfTest
         }
         samples.Add(docSample);
         return samples;
+    }
+
+    private static Documents.RichDocument SampleDocument()
+    {
+        using var image = Picture();
+        var picture = Documents.Picture.Load(image.ToByteArray(MagickFormat.Png), "A sample picture")!;
+
+        var document = new Documents.RichDocument { Title = "Article", Author = "Self-test" };
+        document.Blocks.Add(new Documents.Heading(1, [new Documents.TextRun("Article")]));
+        document.Blocks.Add(new Documents.Paragraph(
+        [
+            new Documents.TextRun("Merhaba dünya — çğıöşü ÇĞİÖŞÜ. The "),
+            new Documents.TextRun("quick", Documents.TextStyle.Bold),
+            new Documents.TextRun(" brown fox jumps over the "),
+            new Documents.TextRun("lazy", Documents.TextStyle.Italic),
+            new Documents.TextRun(" dog.")
+        ]));
+        var list = new Documents.ListBlock(ordered: false);
+        list.Items.Add([new Documents.Paragraph("one")]);
+        list.Items.Add([new Documents.Paragraph("two")]);
+        document.Blocks.Add(list);
+        var table = new Documents.Table { HeaderRows = 1 };
+        table.Rows.Add([new Documents.TableCell([new Documents.Paragraph("Item")]), new Documents.TableCell([new Documents.Paragraph("Count")])]);
+        table.Rows.Add([new Documents.TableCell([new Documents.Paragraph("fox")]), new Documents.TableCell([new Documents.Paragraph("1")])]);
+        document.Blocks.Add(table);
+        document.Blocks.Add(picture);
+        return document;
     }
 
     private static bool IsOleDocument(string path)
@@ -505,6 +556,17 @@ public static class SelfTest
     {
         var sourceCategory = FormatRegistry.GetCategory(sample.Extension);
 
+        if (target == "md")
+        {
+            // a document with pictures becomes a folder: the text, and the pictures it names beside it
+            var file = Directory.Exists(produced) ? Directory.GetFiles(produced, "*.md").Single() : produced;
+            var markdown = await File.ReadAllTextAsync(file, ct);
+            RequireMarker(markdown);
+            foreach (System.Text.RegularExpressions.Match picture in System.Text.RegularExpressions.Regex.Matches(markdown, @"!\[[^\]]*\]\(([^)]+)\)"))
+                CheckImage(Path.Combine(Path.GetDirectoryName(file)!, picture.Groups[1].Value));
+            return Size(new FileInfo(file).Length) + (Directory.Exists(produced) ? " · with pictures" : "");
+        }
+
         if (Directory.Exists(produced))
         {
             var files = Directory.GetFiles(produced, "*." + target);
@@ -566,8 +628,24 @@ public static class SelfTest
                 break;
             }
 
-            case "txt":
+            case "txt" or "html":
                 RequireMarker(await File.ReadAllTextAsync(produced, ct));
+                break;
+
+            case "rtf":
+            {
+                var rtf = await File.ReadAllTextAsync(produced, ct);
+                if (!rtf.StartsWith("{\\rtf", StringComparison.Ordinal)) throw new InvalidOperationException("the output is not RTF");
+                RequireMarker(rtf);
+                break;
+            }
+
+            case "odt":
+                RequireMarker(ZippedText(produced, "application/vnd.oasis.opendocument.text", name => name == "content.xml"));
+                break;
+
+            case "epub":
+                RequireMarker(ZippedText(produced, "application/epub+zip", name => name.EndsWith(".xhtml") || name.EndsWith(".html")));
                 break;
 
             case "docx":
@@ -608,6 +686,28 @@ public static class SelfTest
                 break;
         }
         return Size(new FileInfo(produced).Length);
+    }
+
+    /// <summary>
+    /// The text of the chosen files in a zipped document (OpenDocument, EPUB). Its first entry
+    /// has to be the "mimetype" that says what the file is — programs refuse it otherwise.
+    /// </summary>
+    private static string ZippedText(string path, string mimeType, Func<string, bool> wanted)
+    {
+        using var zip = ZipFile.OpenRead(path);
+        var first = zip.Entries.FirstOrDefault();
+        if (first?.FullName != "mimetype") throw new InvalidOperationException("the file does not begin with its type");
+        using (var reader = new StreamReader(first.Open()))
+            if (reader.ReadToEnd() != mimeType) throw new InvalidOperationException("the file names another type than its own");
+
+        var text = new System.Text.StringBuilder();
+        foreach (var entry in zip.Entries.Where(e => wanted(e.FullName)))
+        {
+            using var reader = new StreamReader(entry.Open());
+            // well-formed, or no program opens it
+            text.Append(System.Xml.Linq.XDocument.Parse(reader.ReadToEnd()).Root!.Value).Append(' ');
+        }
+        return text.ToString();
     }
 
     private static string Size(long bytes) =>

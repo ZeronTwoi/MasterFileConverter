@@ -100,7 +100,13 @@ public static class SettingCatalog
         else if (ImageTargets.Contains(target))
         {
             if (source == FileCategory.Video) FramesFromVideo(list, target);
-            else if (sourceExtension == "pdf") PagesFromPdf(list, target);
+            else if (source == FileCategory.Document)
+            {
+                // a document's pages as pictures: drawn from a PDF, which anything but a PDF is made into first
+                PagesFromPdf(list, target);
+                if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, "pdf")) DocumentEngine(list);
+                else if (sourceExtension != "pdf") PdfFromText(list);
+            }
             else Picture(list, target, resize: true, metadata: true);
         }
         else if (target == "gif")
@@ -119,13 +125,13 @@ public static class SettingCatalog
         else if (target == "pdf")
         {
             if (source == FileCategory.Image) PdfFromPictures(list);
-            else if (sourceExtension is "txt" or "md" or "log") PdfFromText(list);
-            else DocumentEngine(list);
+            // what an office program lays out follows the document's own page setup; the built-in converter asks
+            else if (Converters.DocumentConversion.OfficeMayConvert(sourceExtension, target)) DocumentEngine(list);
+            else PdfFromText(list);
         }
-        else if (source == FileCategory.Document && !(sourceExtension is "txt" or "md" or "log" && target == "docx"))
+        else if (source == FileCategory.Document && Converters.DocumentConversion.OfficeMayConvert(sourceExtension, target))
         {
-            // docx/doc/pdf sources, and text → doc: an office program can be involved
-            if (!(sourceExtension == "pdf" && target == "txt")) DocumentEngine(list);
+            DocumentEngine(list);
         }
         return list;
     }
@@ -512,9 +518,10 @@ public static class SettingCatalog
     {
         var engines = new List<(string, string)> { ("libreoffice", "LibreOffice") };
         if (Platform.PlatformServices.Current.OfficeAutomation is { } office) engines.Add(("office", office.Name));
-        engines.Add(("builtin", "Built-in (text only)"));
+        engines.Add(("builtin", "Built-in"));
         list.Add(Choice(K.Engine, "Convert with", "Document", "Auto (best installed)",
-            "An office program keeps layout, fonts and pictures; the built-in converter carries over the text only but needs nothing installed.",
+            "An office program keeps a document's page layout, fonts and all. The built-in converter keeps its headings, " +
+            "formatting, lists, tables and pictures, and needs nothing installed.",
             engines.ToArray()));
     }
 

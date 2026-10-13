@@ -29,6 +29,11 @@ are in `build/licenses`.
 | [Lato](https://www.latofonts.com) | part of QuestPDF: the font of PDFs made from text | SIL Open Font License 1.1 | `OFL-1.1-Lato.txt` |
 | [PdfPig](https://github.com/UglyToad/PdfPig) | reading text from PDFs | Apache 2.0 | `Apache-2.0.txt` |
 | [Open XML SDK](https://github.com/dotnet/Open-XML-SDK) | Word documents | MIT | below |
+| [Markdig](https://github.com/xoofx/markdig) | reading Markdown | BSD 2-Clause | `BSD-2-Clause-Markdig.txt` |
+| [Html Agility Pack](https://html-agility-pack.net) | reading HTML and e-books | MIT | below |
+| [RtfPipe](https://github.com/erdomke/RtfPipe) | reading RTF | MIT | below |
+| [ExcelDataReader](https://github.com/ExcelDataReader/ExcelDataReader) | reading Excel workbooks | MIT | below |
+| [ExcelNumberFormat](https://github.com/andersnm/ExcelNumberFormat) | numbers and dates as Excel shows them | MIT | below |
 | [SharpCompress](https://github.com/adamhathcock/sharpcompress) | archives | MIT | below |
 
 QuestPDF is free of charge for open-source projects published under an OSI-approved licence,
@@ -53,6 +58,10 @@ uses them when they are installed, and offers to fetch the first two from their 
 - Tmds.DBus — Copyright 2006 Alp Toker, Copyright 2010 Other Contributors, Copyright 2016 Tom Deseyn
 - Open XML SDK — Copyright (c) .NET Foundation and Contributors. All rights reserved.
 - SharpCompress — Copyright (c) 2014 Adam Hathcock
+- Html Agility Pack — Copyright © ZZZ Projects Inc.
+- RtfPipe — Copyright (c) 2018 Eric Domke
+- ExcelDataReader — Copyright (c) 2014 ExcelDataReader
+- ExcelNumberFormat — Copyright (c) 2017 andersnm
 
 each under these terms:
 

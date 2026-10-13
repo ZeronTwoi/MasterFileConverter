@@ -125,6 +125,9 @@ public interface IOfficeAutomation
     string Name { get; }
     bool IsAvailable { get; }
 
+    /// <summary>Does the program read the one format and write the other? (Extensions without the dot.)</summary>
+    bool CanConvert(string sourceExtension, string targetExtension);
+
     /// <summary>Returns false when the program is unavailable or the conversion failed.</summary>
     Task<bool> ConvertAsync(string input, string output, string targetExtension, CancellationToken ct);
 }

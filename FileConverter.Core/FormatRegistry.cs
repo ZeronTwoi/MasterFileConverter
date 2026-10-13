@@ -12,6 +12,16 @@ public enum FileCategory
     Other
 }
 
+/// <summary>What a document is made of, which decides what it can be turned into.</summary>
+public enum DocumentKind
+{
+    None,
+    /// <summary>Fixed pages: a PDF.</summary>
+    Pdf,
+    /// <summary>Running text: Word, OpenDocument text, RTF, HTML, Markdown, e-books, plain text.</summary>
+    Text
+}
+
 /// <summary>
 /// Knows which file extensions belong to which category and which target
 /// formats a given source file can be converted to.
@@ -27,8 +37,11 @@ public static class FormatRegistry
     private static readonly string[] VideoInputs = ["mp4", "mkv", "avi", "webm", "mov", "wmv", "flv", "ts", "m4v"];
     private static readonly string[] VideoOutputs = ["mp4", "mkv", "avi", "webm", "mov"];
 
-    private static readonly string[] DocumentInputs = ["txt", "pdf", "doc", "docx", "md", "log"];
-    private static readonly string[] DocumentOutputs = ["txt", "pdf", "doc", "docx"];
+    private static readonly string[] TextDocuments = ["txt", "md", "log", "rtf", "html", "htm", "docx", "doc", "odt", "epub"];
+    private static readonly string[] DocumentInputs = ["pdf", .. TextDocuments];
+
+    /// <summary>What running text can be written as, the most asked-for first (the first is what a new file is set to).</summary>
+    private static readonly string[] TextOutputs = ["pdf", "docx", "odt", "rtf", "txt", "html", "md", "epub", "doc"];
 
     private static readonly string[] ArchiveInputs = ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2"];
 
@@ -50,12 +63,21 @@ public static class FormatRegistry
         return FileCategory.Other;
     }
 
-    /// <summary>jpg and jpeg (and tif/tiff) are the same format; collapse for self-exclusion.</summary>
-    private static string Canonical(string ext) => ext switch
+    public static DocumentKind GetDocumentKind(string ext)
+    {
+        ext = ext.ToLowerInvariant();
+        if (ext == "pdf") return DocumentKind.Pdf;
+        if (TextDocuments.Contains(ext)) return DocumentKind.Text;
+        return DocumentKind.None;
+    }
+
+    /// <summary>jpg and jpeg (tif/tiff, htm/html) are the same format under two names: the one it is known by here.</summary>
+    public static string Canonical(string ext) => ext switch
     {
         "jpeg" => "jpg",
         "tif" => "tiff",
         "tgz" => "gz",
+        "htm" => "html",
         _ => ext
     };
 
@@ -86,11 +108,7 @@ public static class FormatRegistry
                 break;
 
             case FileCategory.Document:
-                // md/log behave as plain-text sources
-                var docSelf = ext is "md" or "log" ? "txt" : ext;
-                targets.AddRange(DocumentOutputs.Where(t => t != docSelf));
-                if (ext == "pdf")
-                    targets.AddRange(["png", "jpg"]); // one image per page
+                targets.AddRange(DocumentTargets(ext));
                 break;
 
             case FileCategory.Archive:
@@ -107,6 +125,31 @@ public static class FormatRegistry
         }
 
         return targets;
+    }
+
+    private static IEnumerable<string> DocumentTargets(string ext)
+    {
+        switch (GetDocumentKind(ext))
+        {
+            case DocumentKind.Pdf:
+                // back into something that can be edited, or its text and structure in another form
+                foreach (var target in new[] { "docx", "txt", "html", "md", "rtf", "odt", "epub", "doc" }) yield return target;
+                break;
+
+            case DocumentKind.Text:
+                foreach (var target in TextOutputs)
+                {
+                    if (target == ext) continue;
+                    // plain text is plain text under either name, and already is the Markdown it would become
+                    if (ext is "txt" or "log" && target is "txt" or "md") continue;
+                    yield return target;
+                }
+                break;
+        }
+
+        // every document's pages as pictures
+        yield return "png";
+        yield return "jpg";
     }
 
     /// <summary>Which conversion engine handles a given source → target pair.</summary>
