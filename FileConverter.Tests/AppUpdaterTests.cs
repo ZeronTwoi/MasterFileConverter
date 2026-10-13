@@ -78,6 +78,20 @@ public class AppUpdaterTests
         Assert.Contains("protected connection", refused.Message);
     }
 
+    [Theory]
+    [InlineData("App-2.5.0-win-x64-setup.exe", "2.5.0")]
+    [InlineData("App-2.5-win-x64-setup.exe", "2.5")]
+    [InlineData("App-2.5.0-beta.1-win-x64-setup.exe", "2.5.0")]
+    // this app's download, but for another kind of copy; another app's; no version; a renamed file
+    [InlineData("App-2.5.0-win-x64.zip", null)]
+    [InlineData("OtherApp-2.5.0-win-x64-setup.exe", null)]
+    [InlineData("App-win-x64-setup.exe", null)]
+    [InlineData("setup.exe", null)]
+    public void ADownloadGivenByHandHasToBeThisCopysByItsName(string fileName, string? version)
+    {
+        Assert.Equal(version, AppUpdater.VersionOf(fileName, "App", Installed)?.ToString());
+    }
+
     [Fact]
     public void AReleaseIsReadFromWhatGitHubAnswers()
     {

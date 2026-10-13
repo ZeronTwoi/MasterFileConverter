@@ -11,7 +11,7 @@ namespace FileConverter.Core;
 ///   --list-settings &lt;source-ext&gt; &lt;target-ext&gt;   the precise settings --set accepts for a conversion
 ///   --setup-tools   downloads FFmpeg and 7-Zip
 ///   --self-test     converts a generated sample of every format to every target and checks the results
-///   --update        looks for a newer version of the app and installs it
+///   --update        looks for a newer version of the app and installs it (--from &lt;file&gt;: from a download already here)
 ///   --uninstall     takes an installed copy off the computer again (Linux; on Windows that is "Installed apps")
 /// Several inputs with a combinable target (images → pdf/gif/tiff, anything → an
 /// archive) merge into ONE output unless --each is given; otherwise every input is
@@ -46,6 +46,7 @@ public static class CliRunner
               --filter <text>     only the cases whose name contains the text, e.g. "mp4" or "→ pdf"
               --keep              leave the samples and results in the temp folder afterwards
           --update                look for a newer version of the app and install it
+              --from <file>       install it from a download that is already here, without going online
           --uninstall             remove the installed app, the engines it downloaded and its settings (Linux)
               --keep-settings     leave the settings for a later installation
           --version
@@ -103,7 +104,7 @@ public static class CliRunner
         if (args.Contains("--self-test"))
             return await RunSelfTestAsync(args);
         if (args.Contains("--update"))
-            return await UpdateAsync();
+            return await UpdateAsync(args);
         if (args.Contains("--uninstall"))
             return Uninstall(keepSettings: args.Contains("--keep-settings"));
         if (args.Contains("--list-settings"))
@@ -370,7 +371,7 @@ public static class CliRunner
     /// "--update": looks for a newer version and installs it. It is the one thing that makes the
     /// command line look — asked for by name, never by itself.
     /// </summary>
-    private static async Task<int> UpdateAsync()
+    private static async Task<int> UpdateAsync(string[] args)
     {
         if (!AppUpdater.CanUpdate)
         {
@@ -378,16 +379,33 @@ public static class CliRunner
             return 1;
         }
 
-        Console.WriteLine($"{AppInfo.DisplayName} {Version} — looking for a newer version …");
-        var update = await AppUpdater.FindAsync(CancellationToken.None);
-        if (update == null)
+        PreparedUpdate prepared;
+        int from = Array.IndexOf(args, "--from");
+        if (from >= 0)
         {
-            Console.WriteLine("This is the newest version.");
-            return 0;
+            // a download fetched by hand, for a machine that is not online
+            if (from + 1 >= args.Length)
+            {
+                Console.Error.WriteLine("--from needs the file: the download for this system, as it was published.");
+                return 2;
+            }
+            prepared = await AppUpdater.PrepareFromFileAsync(args[from + 1], CancellationToken.None);
+            Console.WriteLine($"{AppInfo.DisplayName} {Version} — updating to version {prepared.Version} from {Path.GetFileName(args[from + 1])} …");
+        }
+        else
+        {
+            Console.WriteLine($"{AppInfo.DisplayName} {Version} — looking for a newer version …");
+            var update = await AppUpdater.FindAsync(CancellationToken.None);
+            if (update == null)
+            {
+                Console.WriteLine("This is the newest version.");
+                return 0;
+            }
+
+            Console.WriteLine($"Downloading version {update.Version} ({update.File.Name}) …");
+            prepared = await AppUpdater.PrepareAsync(update, PercentPrinter(), CancellationToken.None);
         }
 
-        Console.WriteLine($"Downloading version {update.Version} ({update.File.Name}) …");
-        var prepared = await AppUpdater.PrepareAsync(update, PercentPrinter(), CancellationToken.None);
         try
         {
             AppUpdater.Start(prepared, restart: false, unattended: true);
@@ -397,7 +415,8 @@ public static class CliRunner
             AppUpdater.Discard();
             throw;
         }
-        Console.WriteLine($"Version {update.Version} is downloaded and checked. It is put in place as soon as this command has ended — give it a few seconds.");
+        Console.WriteLine((from >= 0 ? $"Version {prepared.Version} is" : $"Version {prepared.Version} is downloaded and checked. It is") +
+                          " put in place as soon as this command has ended — give it a few seconds.");
         return 0;
     }
 

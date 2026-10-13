@@ -146,6 +146,59 @@ public static class AppUpdater
         }
     }
 
+    /// <summary>
+    /// The same from a file that is already on the computer — the download for this copy, fetched
+    /// by hand, for a machine that is not online. Whoever gives it vouches for it: there is no
+    /// checksum to check it against. It has to carry its published name, which says what it is for.
+    /// </summary>
+    public static async Task<PreparedUpdate> PrepareFromFileAsync(string file, CancellationToken ct)
+    {
+        var route = Os.UpdateRoute
+            ?? throw new FriendlyException("This copy of the app cannot update itself. Unpack or install the download in its place.");
+        if (!File.Exists(file)) throw new FriendlyException("There is no file " + file);
+        var version = VersionOf(Path.GetFileName(file), AppInfo.ProgramName, route)
+            ?? throw new FriendlyException(
+                $"This copy of the app is updated with the download named {AppInfo.ProgramName}-<version>{route.FileEnding}; {Path.GetFileName(file)} is not that.");
+        if (RunsElsewhere(route.Folder)) throw new FriendlyException(RunningTwice);
+
+        // an installer runs from where it lies; an archive is unpacked into the data folder
+        if (route.Kind == UpdateKind.Installer) return new PreparedUpdate(version, route, Path.GetFullPath(file));
+        try
+        {
+            Directory.CreateDirectory(WorkFolder);
+            _hold ??= new FileStream(LockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new FriendlyException("An update is already being fetched by another window of the app.");
+        }
+
+        try
+        {
+            Clear(WorkFolder);
+            var unpacked = Path.Combine(WorkFolder, "new");
+            await Task.Run(() => Unpack(file, unpacked), ct);
+            return new PreparedUpdate(version, route, AppIn(unpacked, Os.LauncherName));
+        }
+        catch (Exception ex)
+        {
+            Discard();
+            if (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+                throw new FriendlyException($"{Path.GetFileName(file)} could not be unpacked: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>The version in a download's name — "&lt;name&gt;-2.5.0-linux-x64.tar.gz" — if it is this copy's kind of download.</summary>
+    internal static Version? VersionOf(string fileName, string programName, UpdateRoute route)
+    {
+        if (!fileName.StartsWith(programName + "-", StringComparison.Ordinal) ||
+            !fileName.EndsWith(route.FileEnding, StringComparison.Ordinal) ||
+            fileName.Length <= programName.Length + 1 + route.FileEnding.Length) return null;
+        var middle = fileName[(programName.Length + 1)..^route.FileEnding.Length];
+        return Version.TryParse(middle.Split('-', '+')[0], out var version) ? version : null;
+    }
+
     /// <summary>The download, the check and the unpacking, into <paramref name="folder"/>.</summary>
     internal static async Task<PreparedUpdate> FetchAsync(AvailableUpdate update, string folder, string launcherName,
         IProgress<double>? progress, CancellationToken ct)

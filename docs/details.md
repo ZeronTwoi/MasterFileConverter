@@ -259,8 +259,11 @@ the target of every compatible file at once.
   itself. Otherwise the update waits: *Restart and update* when you are ready (not while files
   are converting), or just close the app when you are done — it is installed then. A second
   window of the app has to be closed first. What an update leaves in the data folder is removed
-  at the next start. From a terminal, `--update` does the same. A copy that cannot replace
-  itself (a folder it may not write to, a build of your own) gets the download page instead.
+  at the next start; and if an update did not go through, the app says so when it is next
+  started. From a terminal, `--update` does the same, and `--update --from <file>` installs a
+  download that is already on the computer — the file for this system, under its published
+  name — without going online. A copy that cannot replace itself (a folder it may not write to,
+  a build of your own) gets the download page instead.
 - **Closing the window ends everything.** If files are still converting, the app asks; with
   *Stop and close* the engines are ended and what they had half written is removed before the
   window goes. Nothing of the app runs on afterwards, and nothing starts with the system.
@@ -330,7 +333,7 @@ masterfileconverter <input> [<input2> …] <target-ext> [options]
 masterfileconverter --list-settings <source-ext> <target-ext>   the settings --set accepts
 masterfileconverter --setup-tools                               download FFmpeg and 7-Zip
 masterfileconverter --self-test [--filter <text>] [--keep]      check every conversion on this machine
-masterfileconverter --update                                    look for a newer version and install it
+masterfileconverter --update [--from <file>]                    look for a newer version and install it
 masterfileconverter --uninstall [--keep-settings]               remove the installed app (Linux)
 ```
 
@@ -403,9 +406,9 @@ built, from the very packages it is built from.
 
 `.github/workflows/build.yml` builds, tests and self-tests on a Windows and a Linux runner for
 every push and pull request and on demand. With the download it has built it then goes through
-what a user's machine sees: an unpacked folder updated in place; and the app installed (the
-installer on Windows, `install.sh` on Linux), updated, uninstalled keeping the settings,
-installed again and uninstalled altogether — after which nothing of it may be left. For a tag
+what a user's machine sees: an unpacked folder updated in place by the app itself; and the app
+installed (the installer on Windows, `install.sh` on Linux), updated, uninstalled keeping the
+settings, installed again and uninstalled altogether — after which nothing of it may be left. For a tag
 such as `v2.4.0` it attaches the installer and both downloads to a GitHub release, whose page
 says which file is for which system, what is new (that version's part of `CHANGELOG.md`) and the
 files' SHA-256 checksums.
@@ -444,11 +447,12 @@ for use, which was not to be touched:
   encoder running and the half-written file where it was.
 
 On GitHub's machines (Windows Server and Ubuntu), for every push, with the very downloads built
-there: the test suite, the download's `--self-test`, an unpacked folder updated in place, and
-the app installed, updated, uninstalled keeping the settings, installed again and uninstalled
-altogether, with a check after each that exactly what should be left is left. That is where the
-Linux side of all this has run — the script, the command, the menu entry renewed by an update;
-no window on a desktop there.
+there: the test suite, the download's `--self-test`, an unpacked folder updated by the app
+itself (`--update --from` the download just built), and the app installed, updated the same
+way, uninstalled keeping the settings, installed again and uninstalled altogether, with a check
+after each that exactly what should be left is left. That is where the Linux side of all this
+has run — the script, the command, the menu entry renewed by an update; no window on a desktop
+there.
 
 Not checked: an update from one released version to the next. 2.4.0 is the first version that
 can update itself, so the release after it will be the first real one; what was tried is the

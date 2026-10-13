@@ -101,16 +101,18 @@ jobs:
           & "$env:FC_FOLDER/$env:APP_PROGRAM-cli.exe" --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # An update the way the app does it for an unpacked folder: a newer copy of the download
-      # moves in where an older one lies. (Both are this build; what is checked is the move.)
+      # An update the way the app does it for an unpacked folder, with the download just built: the
+      # app unpacks it, and the new copy moves in where the old one lies once the command has
+      # ended. (Both are this build; what is checked is the move.)
       - name: Update an unpacked folder in place (Linux)
         if: runner.os == 'Linux'
         run: |
           cp -R "$FC_FOLDER" "$RUNNER_TEMP/old"
-          cp -R "$FC_FOLDER" "$RUNNER_TEMP/new"
           echo "dropped by the new version" > "$RUNNER_TEMP/old/app/only-in-the-old-copy.txt"
           echo "the user's own" > "$RUNNER_TEMP/old/notes.txt"
-          "$RUNNER_TEMP/new/$APP_COMMAND" --apply-update "$RUNNER_TEMP/old" 0 close
+          "$RUNNER_TEMP/old/$APP_COMMAND" --update --from "$GITHUB_WORKSPACE/$FC_ARCHIVE"
+          for second in $(seq 120); do pgrep -f -- '--apply-update' > /dev/null || break; sleep 1; done
+          cat "$HOME/.local/share/$APP_COMMAND/update-failed.txt" 2> /dev/null || true
           test ! -e "$RUNNER_TEMP/old/app/only-in-the-old-copy.txt"
           test -f "$RUNNER_TEMP/old/notes.txt"
           test -z "$(find "$RUNNER_TEMP/old" -maxdepth 1 \( -name '*.old' -o -name '*.new' \))"
@@ -121,15 +123,14 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item $env:FC_FOLDER "$env:RUNNER_TEMP\old" -Recurse
-          Copy-Item $env:FC_FOLDER "$env:RUNNER_TEMP\new" -Recurse
           'dropped by the new version' > "$env:RUNNER_TEMP\old\app\only-in-the-old-copy.txt"
           "the user's own" > "$env:RUNNER_TEMP\old\notes.txt"
-          $update = Start-Process "$env:RUNNER_TEMP\new\$env:APP_PROGRAM.exe" -Wait -PassThru `
-              -ArgumentList '--apply-update', "`"$env:RUNNER_TEMP\old`"", '0', 'close'
-          if ($update.ExitCode -ne 0) {
-              Get-Content "$env:LOCALAPPDATA\$env:APP_PROGRAM\update-failed.txt" -ErrorAction SilentlyContinue
-              throw "the update ended with $($update.ExitCode)"
-          }
+          & "$env:RUNNER_TEMP\old\$env:APP_PROGRAM-cli.exe" --update --from (Resolve-Path $env:FC_ARCHIVE).Path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # the new copy at work: the launcher of the unpacked download
+          $until = (Get-Date).AddMinutes(3)
+          while ((Get-Date) -lt $until -and (Get-Process $env:APP_PROGRAM -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 500 }
+          Get-Content "$env:LOCALAPPDATA\$env:APP_PROGRAM\update-failed.txt" -ErrorAction SilentlyContinue
           if (Test-Path "$env:RUNNER_TEMP\old\app\only-in-the-old-copy.txt") { throw 'a file of the old version outlived it' }
           if (-not (Test-Path "$env:RUNNER_TEMP\old\notes.txt")) { throw "the user's own file is gone" }
           if (Get-ChildItem "$env:RUNNER_TEMP\old" | Where-Object Name -match '\.(old|new)$') { throw 'the swap left something behind' }
@@ -149,10 +150,11 @@ jobs:
           "$HOME/.local/bin/$APP_COMMAND" --version
 
           # an update of the installed copy also renews what install.sh made: here, the menu entry
-          cp -R "$FC_FOLDER" "$RUNNER_TEMP/newer"
           touch "$installed/app/only-in-the-old-copy.txt"
           rm "$HOME/.local/share/applications/$APP_COMMAND.desktop"
-          "$RUNNER_TEMP/newer/$APP_COMMAND" --apply-update "$installed" 0 close
+          "$HOME/.local/bin/$APP_COMMAND" --update --from "$GITHUB_WORKSPACE/$FC_ARCHIVE"
+          for second in $(seq 120); do pgrep -f -- '--apply-update' > /dev/null || break; sleep 1; done
+          cat "$HOME/.local/share/$APP_COMMAND/update-failed.txt" 2> /dev/null || true
           test ! -e "$installed/app/only-in-the-old-copy.txt"
           test -f "$HOME/.local/share/applications/$APP_COMMAND.desktop"
           "$HOME/.local/bin/$APP_COMMAND" --version
@@ -205,10 +207,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ((Get-ItemProperty -LiteralPath $entry).DisplayVersion -ne $env:APP_VERSION) { throw '"Installed apps" names another version' }
 
-          # an update, the way the app runs the installer of a newer version
+          # an update by the app itself: it runs the installer of the "newer" version without its
+          # pages, which waits for the command to end and then replaces the installation
           'dropped by the new version' > "$folder\app\only-in-the-old-copy.txt"
-          Run $setup '/SILENT', '/SUPPRESSMSGBOXES', '/NOCANCEL', '/NORESTART', '/CLOSEAPPLICATIONS', '/FROMAPP'
+          & "$folder\$env:APP_PROGRAM-cli.exe" --update --from $setup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $until = (Get-Date).AddMinutes(5)
+          do { Start-Sleep -Seconds 1 } while ((Get-Date) -lt $until -and (Get-Process | Where-Object Name -like "$env:APP_PROGRAM-*-setup*"))
           if (Test-Path "$folder\app\only-in-the-old-copy.txt") { throw 'a file of the old version outlived the update' }
+          & "$folder\$env:APP_PROGRAM-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           # what the app makes while it is used: engines, settings, a log, a work file a crash left
           New-Item -ItemType Directory -Force "$data\tools" | Out-Null
