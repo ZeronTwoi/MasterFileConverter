@@ -3,6 +3,15 @@
 The part for a version is also what its page under
 [Releases](https://github.com/ZeronTwoi/MasterFileConverter/releases) says.
 
+## 2.7.0
+
+The files selected set to one format at once.
+
+- **Set them to.** With several files selected, a box under the list sets their target format
+  in one go, as *Set all to* does for every file — the other files, and files added later, keep
+  theirs. A format only some of the selected files can become says how many ("pdf (2 of 3)"),
+  and the rest keep the format they have. The selection stays, so its settings can be set next.
+
 ## 2.6.1
 
 Groups that do what they say.

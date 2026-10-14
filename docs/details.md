@@ -223,7 +223,8 @@ instead) and **Use GPU**.
 - **Several files at once.** Shift-click selects a range of rows, Ctrl-click adds a row or takes
   it away again, and either key held while dragging over rows with the left button down does
   the same to every row passed over. Files converted the same way (mov → mp4 and mkv → mp4, say)
-  are then set together; a value they do not share shows as "Not the same in all".
+  are then set together; a value they do not share shows as "Not the same in all". Files that
+  become different formats can first be set to one with *Set them to* under the list.
 - **Groups.** Files given the same settings of their own carry the same coloured *Group* tag in
   the list; its tooltip says what the group's settings are, and a click on it selects the whole
   group. Give some of them other settings and they become another group, in another colour. A
@@ -355,7 +356,9 @@ A **"Combine into one file"** banner appears whenever a batch can merge — it
 shows exactly what will be combined and in which order, and can be unticked to
 convert every file separately. Each group is combined by itself, with its own
 settings: twenty pictures in two groups become two PDFs. A **"Set all to"** picker
-in the header changes the target of every compatible file at once.
+in the header changes the target of every compatible file at once. With several files
+selected, **"Set them to"** under the list does the same for those files alone; a format only
+some of them can become says how many ("pdf (2 of 3)"), and the others keep theirs.
 
 ## Everyday features
 

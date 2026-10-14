@@ -147,6 +147,19 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _showBulkTarget;
 
+    // the same for the files selected alone, when there are several
+    [ObservableProperty]
+    private IReadOnlyList<TargetChoice> _selectionTargetChoices = [];
+
+    [ObservableProperty]
+    private TargetChoice? _selectionTarget;
+
+    [ObservableProperty]
+    private bool _showSelectionTarget;
+
+    [ObservableProperty]
+    private string _selectionText = "";
+
     [ObservableProperty]
     private bool _isConverting;
 
@@ -680,6 +693,7 @@ public partial class MainViewModel : ObservableObject
     public void SetSelection(IReadOnlyList<FileItemViewModel> items)
     {
         _selection = items;
+        RefreshSelectionTarget();
         ShowDetail();
     }
 
@@ -1091,22 +1105,65 @@ public partial class MainViewModel : ObservableObject
     partial void OnBulkTargetChanged(string? value)
     {
         if (value == null || _replacingBulkChoices) return;
+        SetTargets(Items, value);
+        // The box gives an order, it does not hold a state: it goes back to its placeholder once
+        // the order is carried out, so that the same format can be chosen again later.
+        Dispatcher.UIThread.Post(() => BulkTarget = null);
+    }
+
+    partial void OnSelectionTargetChanged(TargetChoice? value)
+    {
+        if (value == null || _replacingSelectionChoices) return;
+        // what is selected is what is set: the other files, and the files added later, keep theirs
+        SetTargets(_selection.Where(Items.Contains).ToList(), value.Target);
+        Dispatcher.UIThread.Post(() => SelectionTarget = null);
+    }
+
+    /// <summary>Sets each of these files that can become <paramref name="target"/> to it.</summary>
+    private void SetTargets(IReadOnlyList<FileItemViewModel> items, string target)
+    {
         _bulkUpdate = true;
         try
         {
-            foreach (var item in Items)
-                if (item.State != ItemState.Converting && item.TargetOptions.Contains(value))
-                    item.SelectedTarget = value;
+            foreach (var item in items)
+                if (item.State != ItemState.Converting && item.TargetOptions.Contains(target))
+                    item.SelectedTarget = target;
         }
         finally
         {
             _bulkUpdate = false;
         }
         RefreshContextUi();
-        // The box gives an order, it does not hold a state: it goes back to its placeholder once
-        // the order is carried out, so that the same format can be chosen again later.
-        Dispatcher.UIThread.Post(() => BulkTarget = null);
     }
+
+    /// <summary>
+    /// What the box under the list offers for the files selected: every format one of them can
+    /// become, in the order their own lists have, a format only some can become with how many.
+    /// </summary>
+    private void RefreshSelectionTarget()
+    {
+        var inList = _selection.Count >= 2 ? Items.ToHashSet() : [];
+        var selected = _selection.Where(i => i.TargetOptions.Count > 0 && inList.Contains(i)).ToList();
+        ShowSelectionTarget = selected.Count >= 2;
+        SelectionText = ShowSelectionTarget ? $"{selected.Count} files selected · Set them to" : "";
+        var choices = selected.SelectMany(i => i.TargetOptions).Distinct()
+            .Select(target => (Target: target, Count: selected.Count(i => i.TargetOptions.Contains(target))))
+            .Select(c => new TargetChoice(c.Target, c.Count == selected.Count ? c.Target : $"{c.Target}  ({c.Count} of {selected.Count})"))
+            .ToList();
+        if (choices.SequenceEqual(SelectionTargetChoices)) return;
+        _replacingSelectionChoices = true;
+        try
+        {
+            SelectionTargetChoices = choices;
+        }
+        finally
+        {
+            _replacingSelectionChoices = false;
+        }
+    }
+
+    /// <summary>What <see cref="_replacingBulkChoices"/> is to "Set all to", for the box under the list.</summary>
+    private bool _replacingSelectionChoices;
 
     /// <summary>
     /// Set while the list of bulk targets is exchanged: the box then re-selects what it showed,
@@ -1171,6 +1228,7 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
+        RefreshSelectionTarget();
         RefreshButtons();
         RefreshCustomMarks();
         ShowDetail();
@@ -1673,4 +1731,10 @@ public partial class MainViewModel : ObservableObject
         ConvertAllCommand.NotifyCanExecuteChanged();
         RestartForUpdateCommand.NotifyCanExecuteChanged();
     }
+}
+
+/// <summary>A format the files selected can be set to, named with how many of them can when not all can.</summary>
+public sealed record TargetChoice(string Target, string Label)
+{
+    public override string ToString() => Label;
 }

@@ -244,7 +244,8 @@ public partial class DetailPanelViewModel : ObservableObject
                 var ways = items.Select(i => $"{i.Extension.ToUpperInvariant()} → {i.SelectedTarget?.ToUpperInvariant() ?? "nothing"}")
                     .Distinct().Take(4);
                 EmptyText = $"These files are converted in different ways ({string.Join(", ", ways)}). Select files that become " +
-                            "the same format in the same way — with Ctrl or Shift — to set them together.";
+                            "the same format in the same way — with Ctrl or Shift — to set them together. The box under " +
+                            "the list sets the ones selected to one format.";
                 return;
             }
 

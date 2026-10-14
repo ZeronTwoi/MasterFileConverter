@@ -634,6 +634,118 @@ public class CompressAndGroupTests(Samples samples) : IClassFixture<Samples>
         Assert.Equal("Only these 3 files", viewModel.Detail.ScopeFileText);
     }
 
+    // ---------- the files selected set to one format ----------
+
+    [AvaloniaFact]
+    public async Task TheFilesSelectedAreSetToOneFormatTogether()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png", "c.png", "song.wav", "d.png"));
+        var rows = viewModel.Items;
+        string before = rows[2].SelectedTarget!, songBefore = rows[3].SelectedTarget!;
+        void Select(params int[] which)
+        {
+            viewModel.SelectedItem = rows[which[0]];
+            viewModel.SetSelection(which.Select(i => rows[i]).ToList());
+        }
+        void Choose(string target)
+        {
+            viewModel.SelectionTarget = viewModel.SelectionTargetChoices.Single(c => c.Target == target);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Select(0);
+        Assert.False(viewModel.ShowSelectionTarget);    // one file has its own box
+
+        Select(0, 1, 4);
+        Assert.True(viewModel.ShowSelectionTarget);
+        Assert.Equal("3 files selected · Set them to", viewModel.SelectionText);
+        Assert.All(viewModel.SelectionTargetChoices, c => Assert.Equal(c.Target, c.Label));
+        Choose("webp");
+        Assert.Equal(["webp", "webp", before, songBefore, "webp"], rows.Select(r => r.SelectedTarget!).ToArray());
+        Assert.Null(viewModel.SelectionTarget);         // back to its placeholder, to be used again
+        Assert.Equal([0, 1, 4], viewModel.SelectedItems.Select(rows.IndexOf).ToArray());
+
+        // a file added later is not set by it, nor the format it comes from
+        await viewModel.AddPathsAsync(Files(folder, "e.png"));
+        Assert.Equal(before, rows[5].SelectedTarget);
+
+        // a picture and a sound share only being packed into an archive: the other choices say how many they are for
+        Select(1, 3);
+        foreach (var c in viewModel.SelectionTargetChoices)
+            Assert.Equal(rows[1].TargetOptions.Contains(c.Target) && rows[3].TargetOptions.Contains(c.Target)
+                ? c.Target : $"{c.Target}  (1 of 2)", c.Label);
+        Assert.Contains(viewModel.SelectionTargetChoices, c => c.Label == "mp3  (1 of 2)");
+        Assert.Contains(viewModel.SelectionTargetChoices, c => c.Label == "zip");
+        Choose("mp3");
+        Assert.Equal("mp3", rows[3].SelectedTarget);
+        Assert.Equal("webp", rows[1].SelectedTarget);
+
+        // in the order the files' own lists have, as "Set all to" has them
+        await viewModel.AddPathsAsync(Files(folder, "clip.mp4"));
+        Select(0, 6);
+        Assert.Equal(rows[0].TargetOptions.Concat(rows[6].TargetOptions).Distinct().ToArray(),
+            viewModel.SelectionTargetChoices.Select(c => c.Target).ToArray());
+        Assert.Contains(viewModel.SelectionTargetChoices, c => c.Label == "gif");
+        Assert.Contains(viewModel.SelectionTargetChoices, c => c.Label == "mp4  (1 of 2)");
+    }
+
+    /// <summary>The box under the list, in the real window: shown for several rows, gone for one.</summary>
+    [AvaloniaFact]
+    public async Task TheBoxUnderTheListSetsTheRowsSelected()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var window = new MainWindow { DataContext = viewModel, Width = 1180, Height = 760 };
+        window.Show();
+        await viewModel.AddPathsAsync(Files(folder, "beach.png", "cliffs.png", "harbour.png", "sunset.png", "intro.wav"));
+        Dispatcher.UIThread.RunJobs();
+        var rows = viewModel.Items;
+        var list = window.FindControl<ListBox>("FileList")!;
+        void Click(int row, RawInputModifiers keys = RawInputModifiers.None)
+        {
+            var container = list.ContainerFromIndex(row)!;
+            var at = container.TranslatePoint(new Point(130, container.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(at, MouseButton.Left, keys);
+            window.MouseUp(at, MouseButton.Left, keys);
+            Dispatcher.UIThread.RunJobs();
+        }
+        var box = window.GetVisualDescendants().OfType<ComboBox>()
+            .Single(c => Avalonia.Automation.AutomationProperties.GetName(c) == "Set the files selected to");
+
+        Click(1);
+        Assert.False(box.IsEffectivelyVisible);
+        Click(2, RawInputModifiers.Shift);
+        Click(4, RawInputModifiers.Control);
+        Assert.True(box.IsEffectivelyVisible);
+        Assert.Equal("3 files selected · Set them to", viewModel.SelectionText);
+
+        box.IsDropDownOpen = true;
+        Dispatcher.UIThread.RunJobs();
+        Directory.CreateDirectory(ScreenshotDir);
+        window.CaptureRenderedFrame()!.Save(Path.Combine(ScreenshotDir, "15-selected-choices.png"),
+            Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        box.IsDropDownOpen = false;
+        Assert.Contains(viewModel.SelectionTargetChoices, c => c.Label == "pdf  (2 of 3)");
+
+        box.SelectedItem = viewModel.SelectionTargetChoices.Single(c => c.Target == "pdf");
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("pdf", rows[1].SelectedTarget);
+        Assert.Equal("pdf", rows[2].SelectedTarget);
+        Assert.NotEqual("pdf", rows[0].SelectedTarget);
+        Assert.NotEqual("pdf", rows[3].SelectedTarget);
+        Assert.Null(box.SelectedItem);
+        Assert.True(box.IsEffectivelyVisible);          // the selection stays, for the next step
+
+        window.CaptureRenderedFrame()!.Save(Path.Combine(ScreenshotDir, "16-selected-set-to.png"),
+            Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+
+        Click(0);
+        Assert.False(box.IsEffectivelyVisible);
+        window.Close();
+    }
+
     /// <summary>Shift-click, Ctrl-click, and both held while dragging over rows, in the real window.</summary>
     [AvaloniaFact]
     public async Task RowsAreSelectedWithShiftAndCtrlClickingAndDragging()
@@ -720,10 +832,14 @@ public class CompressAndGroupTests(Samples samples) : IClassFixture<Samples>
         viewModel.SetSelection([rows[2]]);
         viewModel.Detail.OnlyThisFile = true;
         Way(viewModel, SizeModes.Quality);
-        viewModel.SelectedItem = rows[0];
-        viewModel.SetSelection([rows[0], rows[1]]);
+        // the two shown in the panel selected in the list itself, as a click and a Ctrl-click would
+        var list = window.FindControl<ListBox>("FileList")!;
+        list.Selection.Clear();
+        list.Selection.Select(0);
+        list.Selection.Select(1);
         Dispatcher.UIThread.RunJobs();
 
+        Assert.Equal([0, 1], viewModel.SelectedItems.Select(rows.IndexOf).ToArray());
         Assert.True(rows[4].IsSameFormat);
         Assert.Equal("Not for 3 of 4 JPG files: set in Format settings", viewModel.SliderExceptionText);
         Directory.CreateDirectory(ScreenshotDir);

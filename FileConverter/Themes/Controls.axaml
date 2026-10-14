@@ -225,6 +225,14 @@
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
 
+    <!-- under the file list while several files are selected -->
+    <Style Selector="Border.selectionbar">
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <!-- the text starts where the rows' format chips do -->
+        <Setter Property="Padding" Value="23,8" />
+    </Style>
+
     <!-- status colours on a file row -->
     <Style Selector="TextBlock.status">
         <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
