@@ -609,9 +609,9 @@ public partial class MainViewModel : ObservableObject
     partial void OnUpdateStageChanged(UpdateStage value) => RestartForUpdateCommand.NotifyCanExecuteChanged();
     partial void OnSetupRunningChanged(bool value) => RestartForUpdateCommand.NotifyCanExecuteChanged();
 
-    // ---------- detailed settings ----------
+    // ---------- format settings ----------
 
-    /// <summary>The Detailed Settings panel is showing.</summary>
+    /// <summary>The Format settings panel is showing.</summary>
     [ObservableProperty]
     private bool _detailedSettingsOpen;
 
@@ -693,20 +693,27 @@ public partial class MainViewModel : ObservableObject
         return counts;
     }
 
-    /// <summary>The settings that mean something for a conversion, by source type, target and "combined".</summary>
-    private readonly Dictionary<(string Extension, string Target, bool Merged), HashSet<string>> _applicableKeys = [];
+    /// <summary>The settings a conversion has, and which of them the panel can set, by source type, target and "combined".</summary>
+    private readonly Dictionary<(string Extension, string Target, bool Merged), (IReadOnlyList<SettingDefinition> All, HashSet<string> Applicable)> _settingsOf = [];
 
-    private HashSet<string> ApplicableKeys(string extension, string target, bool merged)
+    private (IReadOnlyList<SettingDefinition> All, HashSet<string> Applicable) SettingsOf(string extension, string target, bool merged)
     {
-        if (!_applicableKeys.TryGetValue((extension, target, merged), out var keys))
-            _applicableKeys[(extension, target, merged)] = keys = SettingCatalog.For(extension, target, merged).Select(d => d.Key).ToHashSet();
-        return keys;
+        if (!_settingsOf.TryGetValue((extension, target, merged), out var settings))
+        {
+            var all = SettingCatalog.For(extension, target, merged);
+            // what has no row in the panel is not in force either — the Speed setting decides it
+            // now, whatever an older version saved — except what a way of setting the size stands for
+            var applicable = all.Where(d => d.InPanel || d.Mode != null).Select(d => d.Key).ToHashSet();
+            _settingsOf[(extension, target, merged)] = settings = (all, applicable);
+        }
+        return settings;
     }
 
     /// <summary>
     /// The precise settings a file converts with: its target format's settings with its own laid
     /// over them, limited to the ones that mean something for this conversion (a resolution saved
-    /// for PDF → JPG says nothing about photo → JPG).
+    /// for PDF → JPG says nothing about photo → JPG), and of the size and quality settings only
+    /// those of the way chosen.
     /// </summary>
     public DetailSettings EffectiveSettings(FileItemViewModel item, bool? merging = null)
     {
@@ -721,10 +728,18 @@ public partial class MainViewModel : ObservableObject
         var all = DetailSettings.Merge(format, merged ? null : item.Overrides);
         if (all.IsEmpty) return all;
 
-        var applicable = ApplicableKeys(item.Extension, target, merged);
-        var kept = all.Values.Where(pair => applicable.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
+        var (definitions, applicable) = SettingsOf(item.Extension, target, merged);
+        var kept = SettingCatalog.Resolve(definitions, all.Values)
+            .Where(pair => applicable.Contains(pair.Key)).ToDictionary(pair => pair.Key, pair => pair.Value);
         return kept.Count == 0 ? DetailSettings.None : new DetailSettings(kept);
     }
+
+    /// <summary>
+    /// Formats in the list whose size and quality are set in Format settings, so the File size
+    /// slider does not decide them — said under the slider. Null when it decides for every file.
+    /// </summary>
+    [ObservableProperty]
+    private string? _sliderExceptionText;
 
     /// <summary>Called by the panel after any change: refreshes the "custom" marks in the list.</summary>
     public void OnDetailSettingsChanged() => RefreshCustomMarks();
@@ -733,13 +748,19 @@ public partial class MainViewModel : ObservableObject
     {
         // counted once for the whole list, not once per row
         Dictionary<string, int>? combinable = null;
+        var ownSize = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var item in Items)
         {
             bool merged = false;
             if (CombineFiles && item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target))
                 merged = (combinable ??= CombinableCounts()).GetValueOrDefault(target) >= 2;
-            item.HasCustomSettings = !EffectiveSettings(item, merged).IsEmpty;
+            var effective = EffectiveSettings(item, merged);
+            item.HasCustomSettings = !effective.IsEmpty;
+            if (!effective.IsEmpty &&
+                SettingCatalog.ReplacesSlider(SettingsOf(item.Extension, item.SelectedTarget!, merged).All, effective.Values))
+                ownSize.Add(item.SelectedTarget!.ToUpperInvariant());
         }
+        SliderExceptionText = ownSize.Count == 0 ? null : $"Not for {string.Join(", ", ownSize)}: set in Format settings";
     }
 
     // ---------- engines ----------

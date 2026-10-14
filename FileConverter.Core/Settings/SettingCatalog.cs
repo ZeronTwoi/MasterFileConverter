@@ -15,7 +15,25 @@ public enum SettingKind
 
 public sealed record SettingChoice(string Value, string Label);
 
-/// <summary>One precise setting as the Detailed Settings panel shows it.</summary>
+/// <summary>The ways a format's size and quality can be set (<see cref="SettingKeys.SizeMode"/>).</summary>
+public static class SizeModes
+{
+    /// <summary>The File size slider decides, as for every other format.</summary>
+    public const string Slider = "slider";
+    public const string Quality = "quality";
+    public const string Bitrate = "bitrate";
+    public const string Size = "size";
+    public const string Lossless = "lossless";
+    public const string Level = "level";
+
+    /// <summary>
+    /// Which one a set of values saved without a choice means: the setting that took precedence
+    /// in the converters before there was one (2.5.0 and older, and the command line).
+    /// </summary>
+    internal static readonly string[] Precedence = [Size, Bitrate, Quality, Lossless, Level];
+}
+
+/// <summary>One precise setting as the Format settings panel shows it.</summary>
 public sealed record SettingDefinition(string Key, string Label, SettingKind Kind)
 {
     /// <summary>Heading the setting is listed under.</summary>
@@ -37,6 +55,31 @@ public sealed record SettingDefinition(string Key, string Label, SettingKind Kin
     /// decoded and encoded again, so "100 %" stops meaning a bit-for-bit copy.
     /// </summary>
     public bool Reencodes { get; init; }
+
+    /// <summary>
+    /// The way of setting size and quality this setting belongs to (a <see cref="SizeModes"/>
+    /// value): it is shown, and in force, only while that way is chosen. Null for settings that
+    /// always apply.
+    /// </summary>
+    public string? Mode { get; init; }
+
+    /// <summary>Filled in when its way of setting size and quality is chosen, so the choice does something at once.</summary>
+    public string? Suggested { get; init; }
+
+    /// <summary>
+    /// A choice that is always one of <see cref="Choices"/>: the panel offers no separate
+    /// "automatic" entry, because the first choice is what automatic means.
+    /// </summary>
+    public bool ChoiceRequired { get; init; }
+
+    /// <summary>
+    /// Has a row in the Format settings panel. False for what the panel decides another way or
+    /// leaves to the Speed setting, but a script may still set with --set.
+    /// </summary>
+    public bool InPanel { get; init; } = true;
+
+    /// <summary>Accepted by --set on the command line. False for the panel's own way of choosing.</summary>
+    public bool OnCommandLine { get; init; } = true;
 
     public bool IsSecret => Kind == SettingKind.Secret;
 
@@ -158,27 +201,103 @@ public static class SettingCatalog
         return list;
     }
 
+    /// <summary>
+    /// The way of setting size and quality that a conversion's values choose: the one saved, or
+    /// for values saved without one, the setting that took precedence before there was a choice.
+    /// <see cref="SizeModes.Slider"/> when the conversion has no such choice.
+    /// </summary>
+    public static string ModeOf(IReadOnlyList<SettingDefinition> definitions, IReadOnlyDictionary<string, string> values)
+    {
+        var choice = definitions.FirstOrDefault(d => d.Key == K.SizeMode);
+        if (choice == null) return SizeModes.Slider;
+        if (values.TryGetValue(K.SizeMode, out var chosen) && choice.Choices.Any(c => c.Value == chosen)) return chosen;
+        foreach (var mode in SizeModes.Precedence)
+        {
+            bool set = definitions.Any(d => d.Mode == mode && values.TryGetValue(d.Key, out var value) &&
+                                            (d.Key != K.Lossless || value == "on"));
+            if (set && choice.Choices.Any(c => c.Value == mode)) return mode;
+        }
+        return SizeModes.Slider;
+    }
+
+    /// <summary>
+    /// The values a conversion runs with: of the size-and-quality settings only those of the
+    /// chosen way are kept, so a quality level, a bitrate and an exact size never compete, and
+    /// none of them is left over when the File size slider is chosen again. The choice itself is
+    /// dropped — no converter reads it.
+    /// </summary>
+    public static Dictionary<string, string> Resolve(IReadOnlyList<SettingDefinition> definitions,
+        IReadOnlyDictionary<string, string> values)
+    {
+        var mode = ModeOf(definitions, values);
+        var kept = new Dictionary<string, string>(values, StringComparer.Ordinal);
+        kept.Remove(K.SizeMode);
+        foreach (var definition in definitions)
+            if (definition.Mode != null && definition.Mode != mode) kept.Remove(definition.Key);
+        if (mode == SizeModes.Lossless) kept[K.Lossless] = "on";
+        return kept;
+    }
+
+    /// <summary>Do these values (after <see cref="Resolve"/>) set size and quality instead of the File size slider?</summary>
+    public static bool ReplacesSlider(IReadOnlyList<SettingDefinition> definitions, IReadOnlyDictionary<string, string> resolved) =>
+        definitions.Any(d => d.Mode != null && resolved.ContainsKey(d.Key));
+
+    /// <summary>
+    /// The choice of how a format's size and quality are set. Its first entry, the File size
+    /// slider, is what happens without one; the settings of the others show only when chosen.
+    /// </summary>
+    private static SettingDefinition SizeMode(string label, string group, string sliderText, string help,
+        params (string Value, string Label)[] ways) =>
+        Choice(K.SizeMode, label, group, sliderText, help, [(SizeModes.Slider, sliderText), .. ways])
+            with { ChoiceRequired = true, OnCommandLine = false };
+
+    private const string SizeAndQuality = "Size and quality";
+    private const string SetBy = "Set by";
+    private const string SliderDecides = "File size slider";
+    private const string FixedQuality = "Fixed quality";
+    private const string FixedBitrate = "Fixed bitrate";
+    private const string ExactSize = "Exact file size";
+    private const string EmptyMeansSlider = " Left empty, the File size slider decides.";
+
     // ---------- pictures ----------
 
-    private static void Picture(List<SettingDefinition> list, string target, bool resize, bool metadata)
+    /// <param name="exactSize">The conversion can aim at a size in kilobytes (pages of a PDF cannot).</param>
+    private static void Picture(List<SettingDefinition> list, string target, bool resize, bool metadata, bool exactSize = true)
     {
-        const string group = "Quality";
         if (target is "jpg" or "webp")
         {
+            var ways = new List<(string, string)>();
+            if (target == "webp") ways.Add((SizeModes.Lossless, "Lossless (every pixel kept)"));
+            ways.Add((SizeModes.Quality, FixedQuality));
+            if (exactSize) ways.Add((SizeModes.Size, ExactSize));
+            list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
+                "How small the picture is made. The File size slider decides for every format, " +
+                (target == "webp" ? "and keeps a picture from a lossless source lossless at 100 %. " : "") +
+                "Choose another way to set it for this format alone.", ways.ToArray()));
+            if (target == "webp")
+            {
+                // the "Lossless" way above, under the name scripts know it by
+                list.Add(Choice(K.Lossless, "Lossless", SizeAndQuality, "Auto (from the source)",
+                    "Lossless WebP keeps every pixel exactly, like PNG, and is usually smaller than PNG. Lossy WebP is far smaller for photos.",
+                    ("on", "Always lossless"), ("off", "Always lossy")) with { Mode = SizeModes.Lossless, InPanel = false });
+            }
             list.Add(new(K.Quality, "Quality", SettingKind.Number)
             {
-                Group = group, Min = 1, Max = 100,
-                Automatic = target == "jpg" ? "Auto (97)" : "Auto (lossless, or 96)",
-                Help = "Encoder quality from 1 (smallest file) to 100 (best picture). " +
-                       "A value here replaces the File size slider for these files."
+                Group = SizeAndQuality, Min = 1, Max = 100, Mode = SizeModes.Quality, Suggested = "90", Automatic = "1 to 100",
+                Help = "Encoder quality from 1 (smallest file) to 100 (best picture). 90 looks the same as the original to most eyes." +
+                       EmptyMeansSlider
             });
+            if (exactSize)
+            {
+                list.Add(new(K.TargetSizeKb, "Size (KB)", SettingKind.Number)
+                {
+                    Group = SizeAndQuality, Min = 1, Max = 1_000_000, Mode = SizeModes.Size, Automatic = "Kilobytes",
+                    Help = "The quality is lowered until each picture fits into this many kilobytes." + EmptyMeansSlider
+                });
+            }
         }
-        if (target == "webp")
-        {
-            list.Add(Choice(K.Lossless, "Lossless", group, "Auto (from the source)",
-                "Lossless WebP keeps every pixel exactly, like PNG, and is usually smaller than PNG. Lossy WebP is far smaller for photos.",
-                ("on", "Always lossless"), ("off", "Always lossy")));
-        }
+
+        const string group = "Picture";
         if (target == "jpg")
         {
             list.Add(Choice(K.Chroma, "Colour detail", group, "Auto (full, 4:4:4)",
@@ -190,9 +309,10 @@ public static class SettingCatalog
         }
         if (target == "png")
         {
+            // how hard PNG compresses is the Speed setting's to decide; scripts may still set it
             list.Add(new(K.Compression, "Compression effort", SettingKind.Number)
             {
-                Group = group, Min = 0, Max = 9, Automatic = "Auto (from Speed)",
+                Group = group, Min = 0, Max = 9, Automatic = "Auto (from Speed)", InPanel = false,
                 Help = "0 (fastest, largest) to 9 (slowest, smallest). PNG is always lossless: this never changes the picture."
             });
         }
@@ -201,14 +321,6 @@ public static class SettingCatalog
             list.Add(Choice(K.Compression, "Compression", group, "Auto (LZW)",
                 "All three keep the picture exactly. Uncompressed opens in anything; ZIP is smallest.",
                 ("none", "Uncompressed"), ("lzw", "LZW"), ("zip", "ZIP (deflate)")));
-        }
-        if (target is "jpg" or "webp")
-        {
-            list.Add(new(K.TargetSizeKb, "Target size (KB)", SettingKind.Number)
-            {
-                Group = group, Min = 1, Max = 1_000_000, Automatic = "No size target",
-                Help = "The quality is lowered until the file fits into this many kilobytes. Overrides Quality and the File size slider."
-            });
         }
 
         if (resize) Resize(list, upscale: true);
@@ -235,7 +347,7 @@ public static class SettingCatalog
     {
         list.Add(new(K.Dpi, "Resolution (dpi)", SettingKind.Number)
         {
-            Group = "Size", Min = 36, Max = 1200, Automatic = "Auto (300)",
+            Group = "Dimensions", Min = 36, Max = 1200, Automatic = "Auto (300)",
             Help = "Dots per inch the drawing is drawn at. At 96 it comes out as many pixels as the drawing says it is; " +
                    "300 is print resolution — a little over three times as wide and high. It is drawn at that size, not enlarged, so it is sharp at any."
         });
@@ -245,7 +357,7 @@ public static class SettingCatalog
 
     private static void Resize(List<SettingDefinition> list, bool upscale)
     {
-        const string group = "Size";
+        const string group = "Dimensions";
         list.Add(new(K.MaxWidth, "Maximum width (px)", SettingKind.Number)
         {
             Group = group, Min = 16, Max = 16384, Automatic = "Keep original",
@@ -281,10 +393,13 @@ public static class SettingCatalog
         });
         if (target == "jpg")
         {
+            list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
+                "How small each frame is made. The File size slider decides for every format; choose a fixed quality to set it for this format alone.",
+                (SizeModes.Quality, FixedQuality)));
             list.Add(new(K.Quality, "Quality", SettingKind.Number)
             {
-                Group = "Quality", Min = 1, Max = 100, Automatic = "Auto (best)",
-                Help = "JPEG quality of each frame, 1 (smallest) to 100 (best)."
+                Group = SizeAndQuality, Min = 1, Max = 100, Mode = SizeModes.Quality, Suggested = "90", Automatic = "1 to 100",
+                Help = "JPEG quality of each frame, 1 (smallest) to 100 (best)." + EmptyMeansSlider
             });
         }
         Resize(list, upscale: false);
@@ -303,7 +418,7 @@ public static class SettingCatalog
             Group = group, Automatic = "All pages",
             Help = "Which pages to turn into images, for example 1-3, 7, 10- (page 10 to the end)."
         });
-        Picture(list, target, resize: false, metadata: false);
+        Picture(list, target, resize: false, metadata: false, exactSize: false);
         Resize(list, upscale: false);
     }
 
@@ -360,6 +475,38 @@ public static class SettingCatalog
 
     private static void Video(List<SettingDefinition> list, string target, bool hasAudio)
     {
+        // avi is written with MPEG-4, which has no quality scale — a bitrate or a size is the way there
+        var ways = new List<(string, string)>();
+        if (target != "avi") ways.Add((SizeModes.Quality, FixedQuality));
+        ways.Add((SizeModes.Bitrate, FixedBitrate));
+        ways.Add((SizeModes.Size, ExactSize));
+        list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
+            "How small the video is made. The File size slider decides for every format, and at 100 % copies the video " +
+            "untouched wherever it can. Choose another way to set it for this format alone; the video is then encoded again.",
+            ways.ToArray()));
+        if (target != "avi")
+        {
+            list.Add(new(K.Crf, "Quality (CRF)", SettingKind.Number)
+            {
+                Group = SizeAndQuality, Min = 0, Max = 63, Reencodes = true, Mode = SizeModes.Quality, Suggested = "20",
+                Automatic = "0 to 63, lower is better",
+                Help = "Constant-quality level: lower is better and larger. For H.264 about 18 is visually lossless, 23 is good, 28 is small; " +
+                       "H.265 looks the same about 4–6 higher." + EmptyMeansSlider
+            });
+        }
+        list.Add(new(K.VideoBitrate, "Video bitrate (kbps)", SettingKind.Number)
+        {
+            Group = SizeAndQuality, Min = 50, Max = 400_000, Reencodes = true, Mode = SizeModes.Bitrate, Suggested = "6000",
+            Automatic = "Kilobits per second",
+            Help = "Average bitrate of the picture. 1080p video looks good at 4000–8000 kbps with H.264." + EmptyMeansSlider
+        });
+        list.Add(new(K.TargetSizeMb, "Size (MB)", SettingKind.Number)
+        {
+            Group = SizeAndQuality, Min = 0.1, Max = 1_000_000, AllowDecimals = true, Reencodes = true, Mode = SizeModes.Size,
+            Automatic = "Megabytes",
+            Help = "The bitrate is worked out so the whole file — video and audio — fits into this many megabytes." + EmptyMeansSlider
+        });
+
         const string picture = "Video";
         var codecs = new List<(string, string)>();
         if (target is "mp4" or "mkv" or "mov") codecs.Add(("h264", "H.264 (plays everywhere)"));
@@ -374,25 +521,6 @@ public static class SettingCatalog
                 codecs.ToArray()) with { Reencodes = true });
         }
 
-        // avi is written with MPEG-4, which has no such scale — a bitrate or target size is the way there
-        if (target != "avi")
-        {
-            list.Add(new(K.Crf, "Quality (CRF)", SettingKind.Number)
-            {
-                Group = picture, Min = 0, Max = 63, Reencodes = true, Automatic = "Auto (visually lossless)",
-                Help = "Constant-quality level: lower is better and larger. For H.264 about 18 is visually lossless, 23 is good, 28 is small; H.265 looks the same about 4–6 higher. Ignored when a bitrate or target size is set."
-            });
-        }
-        list.Add(new(K.VideoBitrate, "Video bitrate (kbps)", SettingKind.Number)
-        {
-            Group = picture, Min = 50, Max = 400_000, Reencodes = true, Automatic = "Not fixed",
-            Help = "Average bitrate of the picture. 1080p video looks good at 4000–8000 kbps with H.264. Ignored when a target size is set."
-        });
-        list.Add(new(K.TargetSizeMb, "Target size (MB)", SettingKind.Number)
-        {
-            Group = picture, Min = 0.1, Max = 1_000_000, AllowDecimals = true, Reencodes = true, Automatic = "No size target",
-            Help = "The bitrate is worked out so the whole file — video and audio — fits into this many megabytes. Overrides Quality, Bitrate and the File size slider."
-        });
         list.Add(new(K.MaxWidth, "Maximum width (px)", SettingKind.Number)
         {
             Group = picture, Min = 64, Max = 8192, Reencodes = true, Automatic = "Keep original",
@@ -408,9 +536,10 @@ public static class SettingCatalog
             Group = picture, Min = 1, Max = 240, AllowDecimals = true, Reencodes = true, Automatic = "Keep original",
             Help = "Video with a higher frame rate is reduced to this (60 → 30 halves the work and the size). Lower rates are left alone."
         });
+        // the Speed setting at the bottom decides; a script may still give one format its own
         list.Add(Choice(K.Speed, "Encoding speed", picture, "Auto (the Speed setting)",
             "Overrides the Speed setting for these files only.",
-            ("fastest", "Fastest"), ("fast", "Fast"), ("balanced", "Balanced"), ("best", "Best quality")));
+            ("fastest", "Fastest"), ("fast", "Fast"), ("balanced", "Balanced"), ("best", "Best quality")) with { InPanel = false });
 
         if (hasAudio)
         {
@@ -450,38 +579,56 @@ public static class SettingCatalog
 
     private static void Audio(List<SettingDefinition> list, string target)
     {
-        const string group = "Audio";
         bool lossy = target is "mp3" or "aac" or "m4a" or "ogg" or "opus";
         if (lossy)
         {
+            var ways = new List<(string, string)>();
+            if (target is "mp3" or "ogg") ways.Add((SizeModes.Quality, "Fixed quality (variable bitrate)"));
+            ways.Add((SizeModes.Bitrate, FixedBitrate));
+            ways.Add((SizeModes.Size, ExactSize));
+            list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
+                "How small the sound is made. The File size slider decides for every format, and at 100 % copies the sound " +
+                "untouched wherever it can. Choose another way to set it for this format alone.", ways.ToArray()));
+            if (target == "mp3")
+            {
+                list.Add(new(K.VbrQuality, "Quality", SettingKind.Number)
+                {
+                    Group = SizeAndQuality, Min = 0, Max = 9, Reencodes = true, Mode = SizeModes.Quality, Suggested = "2",
+                    Automatic = "0 (best) to 9",
+                    Help = "LAME's V scale: 0 is the best (about 245 kbps), 2 is about 190 kbps, 4 about 165, 9 the smallest." + EmptyMeansSlider
+                });
+            }
+            if (target == "ogg")
+            {
+                list.Add(new(K.VbrQuality, "Quality", SettingKind.Number)
+                {
+                    Group = SizeAndQuality, Min = -1, Max = 10, AllowDecimals = true, Reencodes = true, Mode = SizeModes.Quality,
+                    Suggested = "6", Automatic = "-1 to 10 (best)",
+                    Help = "Vorbis quality: 10 is the best, 8 is about 256 kbps, 6 about 192, 3 about 112, -1 the smallest." + EmptyMeansSlider
+                });
+            }
             list.Add(new(K.AudioBitrate, "Bitrate (kbps)", SettingKind.Number)
             {
-                Group = group, Min = 8, Max = 640, Reencodes = true,
-                Automatic = target switch { "aac" or "m4a" => "Auto (256)", "opus" => "Auto (160)", _ => "Auto (best VBR)" },
-                Help = "A fixed average bitrate: 320 is the most MP3 allows, 192 is transparent for most music, 64–96 is enough for speech."
+                Group = SizeAndQuality, Min = 8, Max = 640, Reencodes = true, Mode = SizeModes.Bitrate,
+                Suggested = target == "opus" ? "160" : "256", Automatic = "Kilobits per second",
+                Help = "A fixed average bitrate: 320 is the most MP3 allows, 192 is transparent for most music, 64–96 is enough for speech." +
+                       EmptyMeansSlider
             });
-        }
-        if (target == "mp3")
-        {
-            list.Add(new(K.VbrQuality, "Variable-bitrate quality", SettingKind.Number)
+            list.Add(new(K.TargetSizeMb, "Size (MB)", SettingKind.Number)
             {
-                Group = group, Min = 0, Max = 9, Reencodes = true, Automatic = "Auto (0, the best)",
-                Help = "LAME's V scale: 0 is the best (about 245 kbps), 2 is about 190 kbps, 4 about 165, 9 the smallest. Ignored when a bitrate is set."
+                Group = SizeAndQuality, Min = 0.05, Max = 100_000, AllowDecimals = true, Reencodes = true, Mode = SizeModes.Size,
+                Automatic = "Megabytes",
+                Help = "The bitrate is worked out so the file fits into this many megabytes." + EmptyMeansSlider
             });
         }
-        if (target == "ogg")
-        {
-            list.Add(new(K.VbrQuality, "Variable-bitrate quality", SettingKind.Number)
-            {
-                Group = group, Min = -1, Max = 10, AllowDecimals = true, Reencodes = true, Automatic = "Auto (8)",
-                Help = "Vorbis quality: 10 is the best, 5 is about 160 kbps, 3 about 112, -1 the smallest. Ignored when a bitrate is set."
-            });
-        }
+
+        const string group = "Audio";
         if (target == "flac")
         {
+            // how hard FLAC compresses is the Speed setting's to decide; scripts may still set it
             list.Add(new(K.Compression, "Compression effort", SettingKind.Number)
             {
-                Group = group, Min = 0, Max = 12, Reencodes = true, Automatic = "Auto (from Speed)",
+                Group = group, Min = 0, Max = 12, Reencodes = true, Automatic = "Auto (from Speed)", InPanel = false,
                 Help = "0 (fastest) to 12 (smallest). FLAC is always lossless: this never changes the sound."
             });
         }
@@ -503,14 +650,6 @@ public static class SettingCatalog
         }
         list.Add(Choice(K.Channels, "Channels", group, "Auto (keep)", "Mix the sound down to stereo or mono.",
             ("stereo", "Stereo"), ("mono", "Mono")) with { Reencodes = true });
-        if (lossy)
-        {
-            list.Add(new(K.TargetSizeMb, "Target size (MB)", SettingKind.Number)
-            {
-                Group = group, Min = 0.05, Max = 100_000, AllowDecimals = true, Reencodes = true, Automatic = "No size target",
-                Help = "The bitrate is worked out so the file fits into this many megabytes. Overrides Bitrate and the File size slider."
-            });
-        }
         list.Add(Choice(K.Metadata, "Tags and cover art", "Other", "Auto (keep)",
             "Title, artist, album and the cover picture stored in the file.", ("keep", "Keep"), ("strip", "Remove")));
     }
@@ -617,10 +756,15 @@ public static class SettingCatalog
         const string group = "Archive";
         if (target != "tar")
         {
-            list.Add(new(K.Level, "Compression level", SettingKind.Number)
+            list.Add(SizeMode("Compression", group, "Set by Speed and File size",
+                "How hard the files are compressed. The Speed setting and the File size slider decide for every format; " +
+                "choose a fixed level to set it for this format alone.",
+                (SizeModes.Level, "Fixed level")));
+            list.Add(new(K.Level, "Level", SettingKind.Number)
             {
-                Group = group, Min = 0, Max = 9, Automatic = "Auto (from Speed)",
-                Help = "0 stores the files without compressing them (fastest); 9 compresses hardest (slowest, smallest)."
+                Group = group, Min = 0, Max = 9, Mode = SizeModes.Level, Suggested = "9", Automatic = "0 (store) to 9",
+                Help = "0 stores the files without compressing them (fastest); 9 compresses hardest (slowest, smallest)." +
+                       " Left empty, Speed and the File size slider decide."
             });
             list.Add(new(K.Password, "Password", SettingKind.Secret)
             {

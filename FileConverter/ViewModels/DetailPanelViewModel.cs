@@ -13,6 +13,10 @@ public abstract partial class SettingRowViewModel(SettingDefinition definition) 
     public string Label => Definition.Label;
     public string Help => Definition.Help;
 
+    /// <summary>False while the row belongs to a way of setting size and quality that is not the one chosen.</summary>
+    [ObservableProperty]
+    private bool _isShown = true;
+
     /// <summary>Called with the tidied value (null = automatic) whenever the user changes the row.</summary>
     public Action<SettingRowViewModel, string?>? Changed { get; set; }
 
@@ -57,7 +61,7 @@ public partial class TextSettingRow(SettingDefinition definition) : SettingRowVi
     }
 }
 
-/// <summary>One of a few named values, the first of which is "automatic".</summary>
+/// <summary>One of a few named values, the first of which is "automatic" — or, for a choice that is always made, the first choice.</summary>
 public partial class ChoiceSettingRow : SettingRowViewModel
 {
     private bool _showing;
@@ -69,14 +73,14 @@ public partial class ChoiceSettingRow : SettingRowViewModel
 
     public ChoiceSettingRow(SettingDefinition definition) : base(definition)
     {
-        Options.Add(new SettingChoice("", definition.Automatic));
+        if (!definition.ChoiceRequired) Options.Add(new SettingChoice("", definition.Automatic));
         foreach (var choice in definition.Choices) Options.Add(choice);
     }
 
     public override void Show(string? value, string automaticText)
     {
         _showing = true;
-        Options[0] = new SettingChoice("", automaticText);
+        if (!Definition.ChoiceRequired) Options[0] = new SettingChoice("", automaticText);
         Selected = Options.FirstOrDefault(o => o.Value == (value ?? "")) ?? Options[0];
         _showing = false;
     }
@@ -97,9 +101,11 @@ public sealed record PresetChoice(SettingsPreset Preset, bool IsBuiltIn)
 }
 
 /// <summary>
-/// The Detailed Settings panel: the precise settings of the selected file's conversion.
+/// The Format settings panel: the precise settings of the selected file's conversion.
 /// They are kept per target format ("everything I turn into MP4") and can be overridden for
-/// one file. Whatever is left empty stays automatic.
+/// one file. Whatever is left empty stays automatic. What the bar at the bottom sets for all
+/// files — speed, where results go — is not here; size and quality are set in one of the two
+/// places, and the panel's "Set by" choice says which.
 /// </summary>
 public partial class DetailPanelViewModel : ObservableObject
 {
@@ -120,7 +126,7 @@ public partial class DetailPanelViewModel : ObservableObject
     private bool _hasSettings;
 
     [ObservableProperty]
-    private string _title = "Detailed settings";
+    private string _title = "Format settings";
 
     [ObservableProperty]
     private string _subtitle = "";
@@ -133,7 +139,7 @@ public partial class DetailPanelViewModel : ObservableObject
     private bool _onlyThisFile;
 
     [ObservableProperty]
-    private string _scopeAllText = "All files";
+    private string _scopeAllText = "Every file of this format";
 
     [ObservableProperty]
     private string _scopeFileText = "Only this file";
@@ -181,27 +187,27 @@ public partial class DetailPanelViewModel : ObservableObject
             {
                 HasContext = false;
                 HasSettings = false;
-                Title = "Detailed settings";
+                Title = "Format settings";
                 Subtitle = "";
                 EmptyText = _owner.Items.Count == 0
-                    ? "Add a file, then select it to set its conversion precisely."
-                    : "Select a file to see the settings for its conversion.";
+                    ? "Add a file, then select it to see the settings its target format has."
+                    : "Select a file to see the settings its target format has.";
                 return;
             }
 
             HasContext = true;
             Title = $"{target.ToUpperInvariant()} settings";
             Subtitle = $"{item.FileName}  →  {target}";
-            ScopeAllText = $"All files → {target.ToUpperInvariant()}";
+            ScopeAllText = $"Every file converted to {target.ToUpperInvariant()}";
             ScopeFileText = "Only this file";
             // a file that already has settings of its own opens on them
             OnlyThisFile = item.Overrides.Count > 0;
 
             _definitions = SettingCatalog.For(item.Extension, target, _owner.IsMerged(item));
-            HasSettings = _definitions.Count > 0;
-            EmptyText = "This conversion has nothing to set — it only has one way of being done.";
+            HasSettings = _definitions.Any(d => d.InPanel);
+            EmptyText = "This conversion has nothing to set here — it only has one way of being done.";
 
-            foreach (var group in _definitions.GroupBy(d => d.Group))
+            foreach (var group in _definitions.Where(d => d.InPanel).GroupBy(d => d.Group))
             {
                 var rows = group.Select(Row).ToList();
                 Groups.Add(new SettingGroupViewModel(group.Key, rows));
@@ -236,10 +242,17 @@ public partial class DetailPanelViewModel : ObservableObject
     {
         if (_item?.SelectedTarget is not { } target) return;
         var format = _owner.FormatValues(target);
+        // the way size and quality are set: a file without one of its own follows its format's
+        var mode = SettingCatalog.ModeOf(_definitions, OnlyThisFile ? DetailSettings.Merge(format, _item.Overrides).Values : format);
         foreach (var row in Groups.SelectMany(g => g.Rows))
         {
             var key = row.Definition.Key;
-            if (OnlyThisFile)
+            row.IsShown = row.Definition.Mode == null || row.Definition.Mode == mode;
+            if (key == SettingKeys.SizeMode)
+            {
+                row.Show(mode, "");
+            }
+            else if (OnlyThisFile)
             {
                 // an empty box means "as for all files of this format", and says what that is
                 _item.Overrides.TryGetValue(key, out var own);
@@ -260,19 +273,26 @@ public partial class DetailPanelViewModel : ObservableObject
     private static string Display(SettingDefinition definition, string value) =>
         definition.Choices.FirstOrDefault(c => c.Value == value)?.Label ?? value;
 
+    /// <summary>Sets (or, with null, clears) one setting in the scope being edited.</summary>
+    private void Store(string target, SettingDefinition definition, string? value)
+    {
+        if (OnlyThisFile)
+        {
+            if (value == null) _item!.Overrides.Remove(definition.Key);
+            else _item!.Overrides[definition.Key] = value;
+        }
+        else
+        {
+            _owner.SetFormatValue(target, definition, value);
+        }
+    }
+
     private void OnRowChanged(SettingRowViewModel row, string? value)
     {
         if (_rebuilding || _item?.SelectedTarget is not { } target) return;
 
-        if (OnlyThisFile)
-        {
-            if (value == null) _item.Overrides.Remove(row.Definition.Key);
-            else _item.Overrides[row.Definition.Key] = value;
-        }
-        else
-        {
-            _owner.SetFormatValue(target, row.Definition, value);
-        }
+        if (row.Definition.Key == SettingKeys.SizeMode) ChooseMode(target, row.Definition, value ?? SizeModes.Slider);
+        else Store(target, row.Definition, value);
 
         // a setting changed by hand is no longer "the preset"
         _rebuilding = true;
@@ -280,7 +300,33 @@ public partial class DetailPanelViewModel : ObservableObject
         _rebuilding = false;
 
         _owner.OnDetailSettingsChanged();
-        RefreshWarning();
+        if (row.Definition.Key == SettingKeys.SizeMode) ShowValues();
+        else RefreshWarning();
+    }
+
+    /// <summary>
+    /// Switches the way size and quality are set, in the scope being edited. The settings of the
+    /// other ways are cleared, so none is left over to compete with the one chosen, and the
+    /// chosen one's setting gets a starting value when it has none yet.
+    /// </summary>
+    private void ChooseMode(string target, SettingDefinition choice, string mode)
+    {
+        var format = _owner.FormatValues(target);
+        // for every file of a format no choice means the slider; one file says so in so many
+        // words, because without a choice of its own it follows its format's
+        Store(target, choice, OnlyThisFile || mode != SizeModes.Slider ? mode : null);
+        foreach (var definition in _definitions.Where(d => d.Mode != null))
+        {
+            if (definition.Mode != mode)
+            {
+                Store(target, definition, null);
+            }
+            else if (definition.Suggested != null && !format.ContainsKey(definition.Key) &&
+                     !(OnlyThisFile && _item!.Overrides.ContainsKey(definition.Key)))
+            {
+                Store(target, definition, definition.Suggested);
+            }
+        }
     }
 
     /// <summary>Says so when the settings in force mean the video or audio is encoded again.</summary>
@@ -307,16 +353,12 @@ public partial class DetailPanelViewModel : ObservableObject
         foreach (var definition in _definitions.Where(d => !d.IsSecret))
         {
             string? tidy = value.Preset.Values.TryGetValue(definition.Key, out var raw) ? definition.Normalize(raw) : null;
-            if (OnlyThisFile)
-            {
-                if (tidy == null) _item.Overrides.Remove(definition.Key);
-                else _item.Overrides[definition.Key] = tidy;
-            }
-            else
-            {
-                _owner.SetFormatValue(target, definition, tidy);
-            }
+            Store(target, definition, tidy);
         }
+        // …and the way of setting size and quality is the one its values belong to
+        var mode = SettingCatalog.ModeOf(_definitions, value.Preset.Values);
+        if (mode != SizeModes.Slider && _definitions.FirstOrDefault(d => d.Key == SettingKeys.SizeMode) is { } choice)
+            Store(target, choice, mode);
         _owner.OnDetailSettingsChanged();
         ShowValues();
     }
@@ -326,11 +368,7 @@ public partial class DetailPanelViewModel : ObservableObject
     private void Reset()
     {
         if (_item?.SelectedTarget is not { } target) return;
-        foreach (var definition in _definitions)
-        {
-            if (OnlyThisFile) _item.Overrides.Remove(definition.Key);
-            else _owner.SetFormatValue(target, definition, null);
-        }
+        foreach (var definition in _definitions) Store(target, definition, null);
         _rebuilding = true;
         SelectedPreset = null;
         _rebuilding = false;

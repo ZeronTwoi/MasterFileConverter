@@ -4,7 +4,7 @@ What the [front page](../README.md) says in a few lines, in full: what is in the
 setting, what "lossless" covers, measured speed, the command line, how to build it, and what has
 been tested.
 
-![Detailed settings for the selected conversion](screenshots/detailed-settings.png)
+![The format settings of the selected conversion](screenshots/format-settings.png)
 
 ## The downloads
 
@@ -135,7 +135,7 @@ for everything else wherever no office program is there:
 - **into PowerPoint or ODP:** every page becomes a slide of the page's size that shows it
   exactly — drawn by PDFium at 200 dpi and stored without loss. Its text is part of the
   picture. (LibreOffice's import, which gives text that can be edited and a look that is close
-  rather than exact, can be chosen under Detailed settings.)
+  rather than exact, can be chosen under Format settings.)
 - **into SVG:** a page as a drawing — see below.
 
 ## Quality: what 100 % means
@@ -183,12 +183,25 @@ At the 100 % slider position nothing is thrown away that the target format can k
 
 Below 100 % the size slider takes over and trades quality for a target size.
 
-## Detailed settings
+## Settings for all files, and Format settings
 
-The **Detailed settings** button opens a panel beside the file list with the precise settings of
-the selected file's conversion — for those who want exact control instead of one slider. It is
-off by default; with it off, and for anything left empty, the app decides exactly as described
-above.
+Settings live in two places, and nothing can be set in both:
+
+- **Settings for all files** — the bar at the bottom — are used for every file in the list,
+  whatever its format: the **File size** slider (how small the results are made), **Speed**,
+  whether the graphics card may encode video, where results are saved, and what happens when a
+  result's name is taken.
+- **Format settings** — the button at the top — open a panel beside the file list with what only
+  the selected file's target format has: a resolution, a video or audio format, pages, a paper
+  size, a password and so on. It is off by default; with it off, and for anything left empty,
+  the app decides exactly as described above.
+
+Size and quality are the one thing the two could both decide, so in the panel they are a choice:
+**Set by** the *File size slider* (the default), or for this format alone a *fixed quality*, a
+*fixed bitrate* or an *exact file size* (for WebP also *lossless*; for archives a *fixed
+level*). Only the box for the way chosen is shown, so a quality, a bitrate and a size never
+compete, and choosing one clears the others. Under the slider the bar says which formats in the
+list it does not decide ("Not for MP4: set in Format settings").
 
 - **What can be set depends on both ends of the conversion.** PDF → JPG has a resolution and a
   page list, video → JPG a frame rate, photo → JPG neither.
@@ -198,15 +211,14 @@ above.
 - **Presets** fill in a whole set at once ("Fit in 10 MB", "Web · 1920 px", "Podcast · mono
   64 kbps" …), and the current settings can be saved as a preset of your own.
 - **Honest about lossless.** When a setting means the video or audio is encoded again instead of
-  copied, the panel says so. A precise quality, bitrate or target size replaces the size slider
-  for those files.
-- Rows that convert with detailed settings are marked in the list.
+  copied, the panel says so.
+- Rows that convert with format settings are marked in the list.
 
 | Result | Settings |
 |---|---|
-| Pictures | quality · lossless (WebP) · colour detail 4:4:4 / 4:2:2 / 4:2:0 · progressive · compression effort (PNG, TIFF) · target size in KB · maximum width / height · scale % · photo information: keep, remove location only, remove all · background colour for transparency · colours (GIF) |
-| Video | format: H.264, H.265, VP9, AV1 (where the installed FFmpeg can encode it) · quality (CRF) · bitrate · target size in MB · maximum width / height · maximum frame rate · encoding speed · audio format, bitrate, channels, or no audio · subtitles · tags and chapters |
-| Audio | bitrate · variable-bitrate quality · sample rate · channels · bit depth (WAV, FLAC) · FLAC effort · target size in MB · tags and cover art |
+| Pictures | size and quality (JPG, WebP): the slider, a fixed quality, a size in KB, or lossless (WebP) · colour detail 4:4:4 / 4:2:2 / 4:2:0 · progressive · compression (TIFF) · maximum width / height · scale % · photo information: keep, remove location only, remove all · background colour for transparency · colours (GIF) |
+| Video | size and quality: the slider, a fixed quality (CRF), a fixed bitrate or a size in MB · format: H.264, H.265, VP9, AV1 (where the installed FFmpeg can encode it) · maximum width / height · maximum frame rate · audio format, bitrate, channels, or no audio · subtitles · tags and chapters |
+| Audio | size and quality (MP3, AAC, M4A, Ogg, Opus): the slider, a fixed quality (variable bitrate; MP3, Ogg), a fixed bitrate or a size in MB · sample rate · channels · bit depth (WAV, FLAC) · tags and cover art |
 | GIF from video / pictures | frame rate · width · colours · shading · repeat · seconds per picture |
 | Frames from video | frames per second · maximum number of frames · JPEG quality · maximum size |
 | PDF or any document → images | resolution (dpi) · pages (`1-3, 7, 10-`) · plus the picture settings |
@@ -218,7 +230,11 @@ above.
 | … → CSV | separator: comma, semicolon or tab |
 | PDF → PowerPoint / ODP | exact (pages as pictures) or LibreOffice's editable import · resolution (dpi) · pages |
 | PDF → TIFF / SVG | pages (· resolution and compression for TIFF) |
-| Archives | compression level 0–9 · password (AES-256; kept for the session, never saved) · solid 7z |
+| Archives | compression: Speed and the slider, or a fixed level 0–9 · password (AES-256; kept for the session, never saved) · solid 7z |
+
+How hard PNG and FLAC compress, and how fast video is encoded, are Speed's to decide, so the
+panel has no second control for them; a script can still set them (`--set compression=…`,
+`--set speed=…`).
 
 ## Speed
 
@@ -462,7 +478,7 @@ build\publish.ps1                                    # the downloads and the ins
 | `FileConverter.Platform.Windows` | Word, Excel and PowerPoint automation, registry, Explorer's sort order, Windows engine downloads |
 | `FileConverter.Platform.Linux` | XDG folders, `/sys` and `/proc` probing, the desktop's file manager, Linux engine downloads |
 | `FileConverter` | the Avalonia window (and `--cli`); references exactly one platform project |
-| `FileConverter.Tests` | every conversion, every detailed setting, and the real window rendered off-screen |
+| `FileConverter.Tests` | every conversion, every format setting, and the real window rendered off-screen |
 
 **The app's name and version are said in one place**, the top of `Directory.Build.props`.
 The programs and the details Windows shows for them, the window, the command line, the

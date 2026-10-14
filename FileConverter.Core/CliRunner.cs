@@ -186,7 +186,7 @@ public static class CliRunner
         // In a mixed batch a setting only some of the files know (a resolution for the PDFs among
         // them) applies to those and is left out for the rest.
         var extensions = inputs.Select(FormatRegistry.GetExtension).Distinct().ToList();
-        var knownSomewhere = extensions.SelectMany(e => SettingCatalog.For(e, targetExt, mergeAll)).Select(d => d.Key)
+        var knownSomewhere = extensions.SelectMany(e => CommandLineSettings(e, targetExt, mergeAll)).Select(d => d.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var details = new Dictionary<string, DetailSettings>();
         foreach (var extension in extensions)
@@ -252,7 +252,7 @@ public static class CliRunner
         detail = DetailSettings.None;
         if (sets.Count == 0) return null;
 
-        var definitions = SettingCatalog.For(sourceExt, targetExt, merging);
+        var definitions = CommandLineSettings(sourceExt, targetExt, merging);
         var values = new Dictionary<string, string>();
         foreach (var pair in sets)
         {
@@ -274,6 +274,15 @@ public static class CliRunner
         detail = new DetailSettings(values);
         return null;
     }
+
+    /// <summary>What --set accepts for a conversion: the panel's settings, without its own way of choosing among them.</summary>
+    private static List<SettingDefinition> CommandLineSettings(string sourceExt, string targetExt, bool merging = false) =>
+        SettingCatalog.For(sourceExt, targetExt, merging).Where(d => d.OnCommandLine).ToList();
+
+    /// <summary>A setting's explanation as the command line has it: --size and --speed instead of the window's controls.</summary>
+    private static string ForCommandLine(string text) => text
+        .Replace("Speed and the File size slider decide", "--speed and --size decide")
+        .Replace("the File size slider", "--size");
 
     private static string Describe(SettingDefinition definition) => definition.Kind switch
     {
@@ -298,14 +307,23 @@ public static class CliRunner
             return 2;
         }
 
-        var definitions = SettingCatalog.For(names[0], names[1]);
+        var definitions = CommandLineSettings(names[0], names[1]);
         Console.WriteLine($"Settings for .{names[0]} → .{names[1]} (use with --set key=value; anything not set is automatic):");
         if (definitions.Count == 0) Console.WriteLine("  none — this conversion has only one way of being done.");
         foreach (var definition in definitions)
         {
-            Console.WriteLine($"  {definition.Key,-14} {definition.Label} — {Describe(definition)}. Default: {definition.Automatic}");
-            Console.WriteLine($"  {"",-14} {definition.Help}");
+            // the size and quality settings have no default of their own: without one, --size decides
+            var fallback = definition.Mode != null && definition.InPanel ? "not set" : definition.Automatic;
+            Console.WriteLine($"  {definition.Key,-14} {definition.Label} — {Describe(definition)}. Default: {fallback}");
+            Console.WriteLine($"  {"",-14} {ForCommandLine(definition.Help)}");
         }
+
+        // in the window only one of these can be chosen; here the converters' order decides
+        var competing = SizeModes.Precedence
+            .SelectMany(mode => definitions.Where(d => d.Mode == mode && d.Key != SettingKeys.Lossless))
+            .Select(d => d.Key).ToList();
+        if (competing.Count > 1)
+            Console.WriteLine($"Of {string.Join(", ", competing)} only one is used: the first one set, in that order.");
         return 0;
     }
 

@@ -61,8 +61,9 @@ settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
   Excel and PowerPoint or LibreOffice are installed, they lay the pages out exactly instead.
 - **Fast.** Every processor core is used, and the graphics card for video where that is
   actually quicker.
-- **Simple, precise when wanted.** One slider trades size for quality. The *Detailed settings*
-  panel gives exact control: resolution, bitrate, codec, target size, password and more.
+- **Simple, precise when wanted.** One slider trades size for quality for all files. *Format
+  settings* give exact control for one format: resolution, codec, pages, password, and an exact
+  quality, bitrate or file size instead of the slider.
 - **Offline, and nothing behind your back.** Your files never leave your computer. The app
   only goes online for what you agree to: fetching the engines, one look per start for a newer
   version if you say yes when it asks, and installing that version when you click. No account,

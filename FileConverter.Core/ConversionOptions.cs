@@ -23,7 +23,7 @@ public sealed record ConversionOptions
     public bool HasSizeTarget => SizePercent < 100;
 
     /// <summary>
-    /// Precise settings from the Detailed Settings panel. Empty by default, and then every
+    /// Precise settings from the Format settings panel. Empty by default, and then every
     /// conversion decides for itself exactly as it does without the panel.
     /// </summary>
     public DetailSettings Detail { get; init; } = DetailSettings.None;

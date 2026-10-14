@@ -3,6 +3,25 @@
 The part for a version is also what its page under
 [Releases](https://github.com/ZeronTwoi/MasterFileConverter/releases) says.
 
+## 2.5.1
+
+Clearer settings: two places with names that say what they are for, and nothing that can be set
+in both.
+
+- **Settings for all files** is the bar at the bottom: file size, speed, where results go. It
+  now says so above it.
+- **Format settings** is the new name of the *Detailed settings* button and panel: what only
+  the selected file's target format has — resolution, codec, pages, password and more.
+- **Size and quality are set in one place at a time.** The panel's *Set by* choice is the File
+  size slider unless you pick, for that format alone, a fixed quality, a fixed bitrate or an
+  exact file size — only that box is shown, and choosing one clears the others, so they never
+  override each other unseen. Under the slider the bar names the formats it does not decide.
+- The panel no longer has a second speed control (video encoding speed, PNG and FLAC
+  compression effort): the Speed setting decides them. A script can still set them with `--set`.
+- Settings saved by 2.5.0 keep doing what they did: where several sizes or qualities were set
+  for one format, the one that won then is the one chosen now.
+- The panel can no longer reach over the bar at the bottom in a short window.
+
 ## 2.5.0
 
 Many more conversions — documents, spreadsheets, presentations and drawings, to and from PDF and

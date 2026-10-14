@@ -58,12 +58,12 @@
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
-                <ToggleButton IsChecked="{Binding DetailedSettingsOpen}" AutomationProperties.Name="Detailed settings"
-                              ToolTip.Tip="Show precise settings for each conversion — quality numbers, sizes, formats, bitrates — instead of only the simple File size slider. They are saved per target format.">
+                <ToggleButton IsChecked="{Binding DetailedSettingsOpen}" AutomationProperties.Name="Format settings"
+                              ToolTip.Tip="Settings that belong to one target format — resolution, codec, pages, password and more — and, if you want, an exact quality or size for that format instead of the File size slider. Kept for each format, e.g. for everything you turn into MP4.">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Path Data="{StaticResource IconSliders}" Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4"
                               StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
-                        <TextBlock Text="Detailed settings" VerticalAlignment="Center" />
+                        <TextBlock Text="Format settings" VerticalAlignment="Center" />
                     </StackPanel>
                 </ToggleButton>
             </StackPanel>
@@ -138,7 +138,7 @@
         </Border>
         </StackPanel>
 
-        <!-- ═══ file list, with the detailed settings beside it when they are switched on ═══ -->
+        <!-- ═══ file list, with the format settings beside it when they are switched on ═══ -->
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
         <Border Grid.Column="0" Classes="card">
             <Grid>
@@ -182,10 +182,10 @@
                                                TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
                                     <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                                         <TextBlock Classes="dim" Text="{Binding SizeText}" FontSize="11.5" />
-                                        <TextBlock Text="  ·  detailed settings" FontSize="11.5"
+                                        <TextBlock Text="  ·  custom format settings" FontSize="11.5"
                                                    Foreground="{DynamicResource AccentBrush}"
                                                    IsVisible="{Binding HasCustomSettings}"
-                                                   ToolTip.Tip="This file converts with precise settings from the Detailed settings panel." />
+                                                   ToolTip.Tip="This file converts with settings from the Format settings panel." />
                                     </StackPanel>
                                 </StackPanel>
 
@@ -234,8 +234,10 @@
             </Grid>
         </Border>
 
-        <!-- detailed settings of the selected file's conversion -->
-        <Border Grid.Column="1" Classes="card" Width="372" Margin="12,0,0,0" IsVisible="{Binding DetailedSettingsOpen}">
+        <!-- the settings of the selected file's target format; clipped, so that in a short window
+             it shrinks into its own space instead of reaching over the settings for all files -->
+        <Border x:Name="FormatSettingsPanel" Grid.Column="1" Classes="card" Width="372" Margin="12,0,0,0" IsVisible="{Binding DetailedSettingsOpen}"
+                ClipToBounds="True">
             <Grid RowDefinitions="Auto,*,Auto" DataContext="{Binding Detail}" x:DataType="vm:DetailPanelViewModel">
 
                 <StackPanel Margin="16,14,16,8">
@@ -255,7 +257,7 @@
                         <RadioButton GroupName="DetailScope" Content="{Binding ScopeAllText}" IsChecked="{Binding ScopeIsAll}"
                                      ToolTip.Tip="These settings are used for every file converted to this format, and are remembered for next time." />
                         <RadioButton GroupName="DetailScope" Content="{Binding ScopeFileText}" IsChecked="{Binding OnlyThisFile}"
-                                     ToolTip.Tip="Settings for the selected file alone. Anything left empty follows the format's settings." />
+                                     ToolTip.Tip="Settings for the selected file alone. Anything left empty follows the settings of every file of this format." />
 
                         <!-- presets -->
                         <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0" IsVisible="{Binding HasPresets}">
@@ -291,7 +293,7 @@
                                             <ItemsControl.DataTemplates>
                                                 <DataTemplate x:DataType="vm:TextSettingRow">
                                                     <Grid ColumnDefinitions="*,172" Margin="0,7,0,0" Background="Transparent"
-                                                          ToolTip.Tip="{Binding Help}">
+                                                          ToolTip.Tip="{Binding Help}" IsVisible="{Binding IsShown}">
                                                         <TextBlock Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center"
                                                                    Margin="0,0,10,0" />
                                                         <TextBox Grid.Column="1" Classes.secret="{Binding IsSecret}"
@@ -301,7 +303,7 @@
                                                 </DataTemplate>
                                                 <DataTemplate x:DataType="vm:ChoiceSettingRow">
                                                     <Grid ColumnDefinitions="*,172" Margin="0,7,0,0" Background="Transparent"
-                                                          ToolTip.Tip="{Binding Help}">
+                                                          ToolTip.Tip="{Binding Help}" IsVisible="{Binding IsShown}">
                                                         <TextBlock Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center"
                                                                    Margin="0,0,10,0" />
                                                         <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
@@ -352,9 +354,13 @@
             </Grid>
         </Border>
 
-        <!-- ═══ settings ═══ -->
-        <Border Grid.Row="4" Classes="card" Padding="16,12" Margin="0,12,0,0">
-            <Grid>
+        <!-- ═══ settings for all files: what every conversion goes by, whatever its format ═══ -->
+        <Border x:Name="AllFilesSettings" Grid.Row="4" Classes="card" Padding="16,10,16,12" Margin="0,12,0,0">
+            <Grid RowDefinitions="Auto,Auto">
+                <TextBlock Classes="grouphead" Text="Settings for all files" Margin="0,0,0,8" HorizontalAlignment="Left"
+                           Background="Transparent"
+                           ToolTip.Tip="Used for every file in the list, whatever its format. What only some formats have — resolution, codec, pages, password — is under Format settings at the top." />
+            <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="2.1*" />
                     <ColumnDefinition Width="3*" />
@@ -364,11 +370,16 @@
 
                 <!-- size slider -->
                 <StackPanel Grid.Column="0" Margin="0,0,24,0"
-                            ToolTip.Tip="Target size of the result as a share of the original. Smaller file = lower quality; 100% keeps the best quality the target format allows.">
+                            ToolTip.Tip="Target size of the result as a share of the original. Smaller file = lower quality; 100% keeps the best quality the target format allows. A format can be given its own exact quality or size under Format settings instead.">
                     <TextBlock Classes="label" Text="File size" />
                     <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
                             Value="{Binding SizePercent}" Margin="0,-1,0,-7" />
                     <TextBlock Classes="hint" Text="{Binding SizePercentText}" TextTrimming="CharacterEllipsis" />
+                    <!-- the formats whose size and quality are set in Format settings, so this slider does not decide them -->
+                    <TextBlock Classes="hint" Foreground="{DynamicResource AccentBrush}" Margin="0,2,0,0"
+                               Text="{Binding SliderExceptionText}" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding SliderExceptionText}"
+                               IsVisible="{Binding SliderExceptionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
 
                 <!-- speed -->
@@ -430,6 +441,7 @@
                                HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="220"
                                IsVisible="{Binding OverallStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
+            </Grid>
             </Grid>
         </Border>
 

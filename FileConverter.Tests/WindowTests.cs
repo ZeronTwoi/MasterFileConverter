@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -100,6 +101,43 @@ public class WindowTests
         viewModel.CustomOutputDirectory = folder.Path;
 
         Capture(window, "03-narrow");
+        window.Close();
+    }
+
+    /// <summary>
+    /// The Format settings panel and the Settings for all files bar each keep their own space:
+    /// in the smallest window, with every banner showing, the panel ends above the bar and
+    /// draws nothing over it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task TheTwoSettingsPanelsNeverOverlap()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var window = Show(viewModel, width: 980, height: 580);
+        await viewModel.AddPathsAsync(SampleFiles(folder, "a.png", "b.png", "c.mov"));
+        viewModel.BulkTarget = null;
+        viewModel.Items[0].SelectedTarget = "pdf";
+        viewModel.Items[1].SelectedTarget = "pdf"; // two pictures for one PDF: the combine banner
+        viewModel.Items[2].SelectedTarget = "mp4";
+        viewModel.SelectedItem = viewModel.Items[2];
+        viewModel.AskAboutUpdates = true;
+        viewModel.SetupNeeded = true;
+        viewModel.UpdateStage = UpdateStage.Failed;
+        viewModel.UpdateTitle = "The update could not be fetched";
+        viewModel.DetailedSettingsOpen = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.HasMergeableGroups);
+
+        var panel = window.FindControl<Border>("FormatSettingsPanel")!;
+        var bar = window.FindControl<Border>("AllFilesSettings")!;
+        Assert.True(panel.IsVisible);
+        Assert.True(panel.ClipToBounds); // whatever does not fit is cut off, not drawn over the bar
+        var panelBottom = panel.TranslatePoint(new Point(0, panel.Bounds.Height), window)!.Value.Y;
+        var barTop = bar.TranslatePoint(new Point(0, 0), window)!.Value.Y;
+        Assert.True(panelBottom <= barTop, $"the panel ends at {panelBottom}, below the top of the bar at {barTop}");
+
+        Capture(window, "10-smallest-with-panel");
         window.Close();
     }
 

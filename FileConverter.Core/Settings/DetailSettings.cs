@@ -5,6 +5,13 @@ namespace FileConverter.Core.Settings;
 /// <summary>Names of the precise settings. A setting that is absent means "automatic".</summary>
 public static class SettingKeys
 {
+    /// <summary>
+    /// Which way a format's size and quality are set: by the File size slider (absent), a
+    /// quality level, a bitrate, an exact size, lossless (WebP) or a fixed level (archives).
+    /// Only the Format settings panel sets it; see <see cref="SettingCatalog.Resolve"/>.
+    /// </summary>
+    public const string SizeMode = "sizeMode";
+
     // pictures (and every picture a conversion writes: frames, PDF pages)
     public const string Quality = "quality";
     public const string Lossless = "lossless";

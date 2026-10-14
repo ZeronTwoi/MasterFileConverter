@@ -44,7 +44,7 @@ public partial class FileItemViewModel : ObservableObject
     /// <summary>Precise settings set for this file alone; they sit on top of its target format's settings.</summary>
     public Dictionary<string, string> Overrides { get; } = [];
 
-    /// <summary>Shown as a small "custom" chip: this file converts with detailed settings.</summary>
+    /// <summary>Shown as a small "custom" chip: this file converts with settings from the Format settings panel.</summary>
     [ObservableProperty]
     private bool _hasCustomSettings;
 

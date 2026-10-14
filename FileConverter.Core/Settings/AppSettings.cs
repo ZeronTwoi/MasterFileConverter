@@ -27,7 +27,7 @@ public sealed class AppSettings
     public string? OutputDirectory { get; set; }
     public ExistingFileAction WhenFileExists { get; set; } = ExistingFileAction.KeepBoth;
 
-    /// <summary>Is the Detailed Settings panel open?</summary>
+    /// <summary>Is the Format settings panel open? (Named after its first name, so older settings files keep it.)</summary>
     public bool DetailedSettings { get; set; }
 
     /// <summary>Precise settings per target format ("jpg", "mp4", …): setting key → value. Missing = automatic.</summary>

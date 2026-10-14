@@ -96,7 +96,7 @@ public static class DocumentConversion
     private static bool IsOfficeSheetTarget(string ext) => ext is "pdf" or "xlsx" or "ods";
 
     /// <summary>
-    /// May an office program do this conversion, or a part of it? (The Detailed settings offer the
+    /// May an office program do this conversion, or a part of it? (The Format settings offer the
     /// choice of engine for exactly these, and the self-test knows from it what needs one.)
     /// </summary>
     public static bool OfficeMayConvert(string sourceExtension, string targetExtension)
@@ -168,7 +168,7 @@ public static class DocumentConversion
                 if (options.Detail.Is(K.Engine, "libreoffice"))
                 {
                     if (ToolLocator.LibreOfficePath == null)
-                        throw new FriendlyException("LibreOffice is selected under Detailed settings but is not installed (libreoffice.org).");
+                        throw new FriendlyException("LibreOffice is selected under Format settings but is not installed (libreoffice.org).");
                     if (await TryLibreOfficeAsync(input, output, dst, inputFilter: "impress_pdf_import", ct)) return output;
                     throw new FriendlyException("LibreOffice could not open this PDF as a presentation.");
                 }
@@ -468,11 +468,11 @@ public static class DocumentConversion
                 return (false, false);
             case "libreoffice":
                 if (ToolLocator.LibreOfficePath == null)
-                    throw new FriendlyException("LibreOffice is selected under Detailed settings but is not installed (libreoffice.org).");
+                    throw new FriendlyException("LibreOffice is selected under Format settings but is not installed (libreoffice.org).");
                 return (true, false);
             case "office":
                 if (!ToolLocator.OfficeAutomationAvailable)
-                    throw new FriendlyException("The office program selected under Detailed settings is not installed.");
+                    throw new FriendlyException("The office program selected under Format settings is not installed.");
                 return (false, true);
             default:
                 return (true, true);

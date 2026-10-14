@@ -11,6 +11,12 @@ public class SettingCatalogTests
     private static string[] Keys(string source, string target, bool merging = false) =>
         SettingCatalog.For(source, target, merging).Select(d => d.Key).ToArray();
 
+    private static string[] PanelKeys(string source, string target) =>
+        SettingCatalog.For(source, target).Where(d => d.InPanel).Select(d => d.Key).ToArray();
+
+    private static Dictionary<string, string> Values(params (string Key, string Value)[] values) =>
+        values.ToDictionary(v => v.Key, v => v.Value);
+
     [Fact]
     public void TheSettingsOfferedDependOnBothEndsOfTheConversion()
     {
@@ -27,9 +33,10 @@ public class SettingCatalogTests
         Assert.Contains(K.Fps, Keys("mp4", "jpg"));
         Assert.Contains(K.MaxFrames, Keys("mp4", "jpg"));
 
-        // png has no quality to set, only effort
+        // png has no quality to set, only effort — and that is the Speed setting's, so only a script sets it
         Assert.DoesNotContain(K.Quality, Keys("jpg", "png"));
         Assert.Contains(K.Compression, Keys("jpg", "png"));
+        Assert.DoesNotContain(K.Compression, PanelKeys("jpg", "png"));
 
         // video
         Assert.Contains(K.VideoCodec, Keys("mov", "mp4"));
@@ -49,8 +56,8 @@ public class SettingCatalogTests
         Assert.Contains(K.Dither, Keys("mp4", "gif"));
 
         // archives
-        Assert.Equal([K.Level, K.Password, K.Solid], Keys("txt", "7z"));
-        Assert.Equal([K.Level, K.Password], Keys("txt", "zip"));
+        Assert.Equal([K.SizeMode, K.Level, K.Password, K.Solid], Keys("txt", "7z"));
+        Assert.Equal([K.SizeMode, K.Level, K.Password], Keys("txt", "zip"));
         Assert.Empty(Keys("zip", "tar"));
 
         // documents
@@ -77,8 +84,85 @@ public class SettingCatalogTests
                 Assert.False(string.IsNullOrWhiteSpace(definition.Automatic));
                 if (definition.Kind == SettingKind.Choice) Assert.True(definition.Choices.Count >= 2);
                 if (definition.Kind == SettingKind.Number) Assert.True(definition.Max > definition.Min);
+                if (definition.Suggested != null) Assert.Equal(definition.Suggested, definition.Normalize(definition.Suggested));
             }
+
+            // what the bar at the bottom sets for all files has no second place in the panel
+            Assert.DoesNotContain(definitions, d => d.InPanel && d.Key == K.Speed);
+
+            // size and quality are set one way at a time: every way offered has its setting to
+            // type (lossless needs none), and every such setting belongs to a way that is offered
+            var ways = definitions.SingleOrDefault(d => d.Key == K.SizeMode);
+            if (ways != null)
+            {
+                Assert.True(ways.ChoiceRequired);
+                Assert.False(ways.OnCommandLine);
+                Assert.Equal(SizeModes.Slider, ways.Choices[0].Value);
+                foreach (var way in ways.Choices.Skip(1))
+                    Assert.True(way.Value == SizeModes.Lossless || definitions.Any(d => d.Mode == way.Value && d.InPanel),
+                        $"{source}→{target} offers \"{way.Label}\" with nothing to set");
+            }
+            foreach (var definition in definitions.Where(d => d.Mode != null))
+                Assert.True(ways?.Choices.Any(c => c.Value == definition.Mode) == true,
+                    $"{source}→{target} {definition.Key} belongs to a way that is not offered");
         }
+    }
+
+    [Fact]
+    public void OnlyTheChosenWayOfSettingSizeAndQualityIsInForce()
+    {
+        var video = SettingCatalog.For("mov", "mp4");
+
+        // a way chosen: its setting is kept, the others' are dropped, and so is the choice itself
+        Assert.Equal(Values((K.VideoBitrate, "4000"), (K.MaxWidth, "1280")), SettingCatalog.Resolve(video,
+            Values((K.SizeMode, SizeModes.Bitrate), (K.Crf, "20"), (K.VideoBitrate, "4000"), (K.TargetSizeMb, "10"), (K.MaxWidth, "1280"))));
+        // the slider chosen: none of them
+        Assert.Empty(SettingCatalog.Resolve(video, Values((K.SizeMode, SizeModes.Slider), (K.Crf, "20"))));
+
+        // saved by 2.5.0, before there was a choice: the setting that took precedence then
+        Assert.Equal(SizeModes.Size, SettingCatalog.ModeOf(video, Values((K.Crf, "20"), (K.TargetSizeMb, "10"))));
+        Assert.Equal(Values((K.TargetSizeMb, "10")), SettingCatalog.Resolve(video, Values((K.Crf, "20"), (K.TargetSizeMb, "10"))));
+        Assert.Equal(SizeModes.Quality, SettingCatalog.ModeOf(video, Values((K.Crf, "20"))));
+        Assert.Equal(SizeModes.Slider, SettingCatalog.ModeOf(video, Values((K.MaxWidth, "1280"))));
+
+        // a way this conversion does not have is none: avi has no quality scale
+        Assert.Equal(SizeModes.Slider, SettingCatalog.ModeOf(SettingCatalog.For("mov", "avi"), Values((K.SizeMode, SizeModes.Quality))));
+
+        // lossless WebP is a way with nothing to type: it stands for lossless=on
+        var webp = SettingCatalog.For("png", "webp");
+        Assert.Equal(Values((K.Lossless, "on")), SettingCatalog.Resolve(webp, Values((K.SizeMode, SizeModes.Lossless), (K.Quality, "80"))));
+        Assert.Equal(Values((K.Quality, "80")), SettingCatalog.Resolve(webp, Values((K.Lossless, "off"), (K.Quality, "80"))));
+        Assert.Equal(SizeModes.Lossless, SettingCatalog.ModeOf(webp, Values((K.Lossless, "on"))));
+
+        // whether the File size slider still decides
+        Assert.True(SettingCatalog.ReplacesSlider(video, SettingCatalog.Resolve(video, Values((K.Crf, "20")))));
+        Assert.False(SettingCatalog.ReplacesSlider(video, SettingCatalog.Resolve(video, Values((K.SizeMode, SizeModes.Quality)))));
+        Assert.False(SettingCatalog.ReplacesSlider(video, Values((K.MaxWidth, "1280"))));
+    }
+
+    [Fact]
+    public void ThePanelAndTheCommandLineEachHaveTheirOwnSettings()
+    {
+        // the bar at the bottom decides speed: the panel has no second speed, a script still may
+        Assert.DoesNotContain(K.Speed, PanelKeys("mov", "mp4"));
+        Assert.Contains(K.Speed, Keys("mov", "mp4"));
+        Assert.DoesNotContain(K.Compression, PanelKeys("wav", "flac"));
+        Assert.Contains(K.Compression, PanelKeys("png", "tiff")); // which TIFF compression is a format matter, not speed
+
+        // the panel's way of choosing is its own; a script sets the values directly
+        var choice = SettingCatalog.For("mov", "mp4").Single(d => d.Key == K.SizeMode);
+        Assert.True(choice.InPanel);
+        Assert.False(choice.OnCommandLine);
+        Assert.Equal([SizeModes.Slider, SizeModes.Quality, SizeModes.Bitrate, SizeModes.Size], choice.Choices.Select(c => c.Value));
+        Assert.Equal([SizeModes.Slider, SizeModes.Bitrate, SizeModes.Size],
+            SettingCatalog.For("mov", "avi").Single(d => d.Key == K.SizeMode).Choices.Select(c => c.Value));
+        // pages of a PDF cannot be aimed at a size in kilobytes, so that is not offered for them
+        Assert.Equal([SizeModes.Slider, SizeModes.Quality],
+            SettingCatalog.For("pdf", "jpg").Single(d => d.Key == K.SizeMode).Choices.Select(c => c.Value));
+        Assert.DoesNotContain(K.TargetSizeKb, Keys("pdf", "jpg"));
+        // nothing to compress any other way: no choice
+        Assert.DoesNotContain(K.SizeMode, Keys("mp3", "flac"));
+        Assert.DoesNotContain(K.SizeMode, Keys("txt", "tar"));
     }
 
     [Fact]
@@ -143,6 +227,7 @@ public class SettingCatalogTests
         }
     }
 
+    /// <summary>A speed of its own reaches a conversion only from a script (--set speed=…), not from the panel.</summary>
     [Fact]
     public void ASpeedSettingOverridesTheBatchSpeedForThatFileOnly()
     {
