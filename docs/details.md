@@ -214,16 +214,23 @@ instead) and **Use GPU**.
 
 - **What can be set depends on both ends of the conversion.** PDF → JPG has a resolution and a
   page list, video → JPG a frame rate, photo → JPG neither.
-- **Settings belong to the target format** — "everything I turn into MP4" — and are saved
-  automatically. **Some files can differ**: switch the panel to *Only this file* (or *Only these
-  files*); whatever is left empty there follows the format.
+- **What is selected is what is set.** The panel opens on *Only this file* (or *Only these
+  files*): the settings are the selected files' own, and whatever is left empty there follows
+  the format. **For every file of a format** — "everything I turn into MP4", the files in the
+  list and the ones added later — choose *Every file converted to MP4, now and later*; those
+  settings are remembered for next time, and every file they apply to says so with a plain
+  *MP4 settings* mark (a click on it shows them).
 - **Several files at once.** Shift-click selects a range of rows, Ctrl-click adds a row or takes
   it away again, and either key held while dragging over rows with the left button down does
   the same to every row passed over. Files converted the same way (mov → mp4 and mkv → mp4, say)
   are then set together; a value they do not share shows as "Not the same in all".
-- **Groups.** Files that convert with exactly the same format settings carry the same coloured
-  *Group* tag in the list; its tooltip says what the group's settings are. Give some files
-  settings of their own and they become another group, in another colour.
+- **Groups.** Files given the same settings of their own carry the same coloured *Group* tag in
+  the list; its tooltip says what the group's settings are, and a click on it selects the whole
+  group. Give some of them other settings and they become another group, in another colour. A
+  group keeps its number and colour as long as it is there, and a file's own settings stay with
+  the format they were made for: set to another format and back, it finds them again. The
+  panel's *Group* list puts the files selected in a group of files converted the same way, or
+  in none (no settings of their own). Files added later are in no group.
 - **Presets** fill in a whole set at once ("Fit in 10 MB", "Web · 1920 px", "Podcast · mono
   64 kbps" …), and the current settings can be saved as a preset of your own.
 - **Honest about lossless.** When a setting means the video or audio is encoded again instead of
@@ -346,8 +353,9 @@ The converter understands what a batch *means*, not just each file alone:
 
 A **"Combine into one file"** banner appears whenever a batch can merge — it
 shows exactly what will be combined and in which order, and can be unticked to
-convert every file separately. A **"Set all to"** picker in the header changes
-the target of every compatible file at once.
+convert every file separately. Each group is combined by itself, with its own
+settings: twenty pictures in two groups become two PDFs. A **"Set all to"** picker
+in the header changes the target of every compatible file at once.
 
 ## Everyday features
 

@@ -74,7 +74,9 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         Assert.Null(viewModel.Detail.Warning);
         Assert.Null(viewModel.SliderExceptionText);
 
-        // a setting for every MP4
+        // the panel opens on the file selected; here, a setting for every MP4
+        Assert.True(viewModel.Detail.OnlyThisFile);
+        viewModel.Detail.ScopeIsAll = true;
         Way(viewModel, SizeModes.Quality);
         Box(viewModel, K.Crf).Text = "23";
         Choice(viewModel, K.VideoCodec).Selected = Choice(viewModel, K.VideoCodec).Options.Single(o => o.Value == "hevc");
@@ -91,6 +93,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         viewModel.Items[1].SelectedTarget = "jpg";
         Assert.Equal("JPG settings", viewModel.Detail.Title);
         Assert.Contains(viewModel.Detail.Groups.SelectMany(g => g.Rows), r => r.Definition.Key == K.Chroma);
+        viewModel.Detail.ScopeIsAll = true;
         Way(viewModel, SizeModes.Quality);
         Box(viewModel, K.Quality).Text = "85";
         Box(viewModel, K.MaxWidth).Text = "1920";
@@ -100,7 +103,9 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         viewModel.SelectedItem = viewModel.Items[2];
         viewModel.Items[2].SelectedTarget = "jpg";
         Assert.Contains(viewModel.Detail.Groups.SelectMany(g => g.Rows), r => r.Definition.Key == K.Dpi);
-        Assert.Equal("85", Box(viewModel, K.Quality).Text); // the JPG quality set a moment ago applies here too
+        Assert.Equal("85 (as for all JPG)", Box(viewModel, K.Quality).Watermark); // the JPG quality set a moment ago applies here too
+        viewModel.Detail.ScopeIsAll = true;
+        Assert.Equal("85", Box(viewModel, K.Quality).Text);
 
         // a conversion with nothing to set says so
         viewModel.SelectedItem = viewModel.Items[3];
@@ -121,6 +126,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         viewModel.DetailedSettingsOpen = true;
         viewModel.SelectedItem = viewModel.Items[0];
 
+        viewModel.Detail.ScopeIsAll = true;
         Way(viewModel, SizeModes.Quality);
         Box(viewModel, K.Quality).Text = "80";              // for every JPG
         viewModel.Detail.OnlyThisFile = true;
@@ -135,9 +141,12 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         Assert.False(viewModel.EffectiveSettings(viewModel.Items[1]).Has(K.MaxWidth));
         Assert.Equal("80", viewModel.Settings.FormatSettings["jpg"][K.Quality]);
 
-        // coming back to the file, the panel opens on its own settings
+        // the panel opens on the file selected: the other one has nothing of its own…
         viewModel.SelectedItem = viewModel.Items[1];
-        Assert.False(viewModel.Detail.OnlyThisFile);
+        Assert.True(viewModel.Detail.OnlyThisFile);
+        Assert.Equal("", Box(viewModel, K.Quality).Text);
+        Assert.Equal("80 (as for all JPG)", Box(viewModel, K.Quality).Watermark);
+        // …and coming back to the first, its own settings are there
         viewModel.SelectedItem = viewModel.Items[0];
         Assert.True(viewModel.Detail.OnlyThisFile);
         Assert.Equal("55", Box(viewModel, K.Quality).Text);
@@ -163,6 +172,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         viewModel.Items[1].SelectedTarget = "mp3";
         viewModel.DetailedSettingsOpen = true;
         viewModel.SelectedItem = viewModel.Items[0];
+        viewModel.Detail.ScopeIsAll = true;
 
         // at first the slider decides, and none of the ways' settings is shown — nor a second speed
         Assert.Equal(SizeModes.Slider, Choice(viewModel, K.SizeMode).Selected!.Value);
@@ -226,6 +236,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         await viewModel.AddPathsAsync(Files(folder, "clip.mov"));
         viewModel.Items[0].SelectedTarget = "mp4";
         viewModel.DetailedSettingsOpen = true;
+        viewModel.Detail.ScopeIsAll = true;
 
         // the exact size beat the quality level then, and is what the panel shows now
         Assert.Equal(SizeModes.Size, Choice(viewModel, K.SizeMode).Selected!.Value);
@@ -249,6 +260,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         viewModel.DetailedSettingsOpen = true;
 
         viewModel.SelectedItem = viewModel.Items[0];
+        viewModel.Detail.ScopeIsAll = true;
         Way(viewModel, SizeModes.Quality);
         Box(viewModel, K.Quality).Text = "250";
         Assert.Equal("100", Box(viewModel, K.Quality).Text);      // out of range → the nearest allowed value
@@ -257,6 +269,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         Assert.False(viewModel.Settings.FormatSettings["jpg"].ContainsKey(K.MaxWidth));
 
         viewModel.SelectedItem = viewModel.Items[1];
+        viewModel.Detail.ScopeIsAll = true;
         Box(viewModel, K.Password).Text = "open sesame";
         Way(viewModel, SizeModes.Level);
         Box(viewModel, K.Level).Text = "7";
@@ -287,6 +300,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         await viewModel.AddPathsAsync(Files(folder, "clip.mov"));
         viewModel.Items[0].SelectedTarget = "mp4";
         viewModel.DetailedSettingsOpen = true;
+        viewModel.Detail.ScopeIsAll = true;
 
         Way(viewModel, SizeModes.Quality);
         Box(viewModel, K.Crf).Text = "30";
@@ -319,6 +333,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
         await next.AddPathsAsync(Files(folder, "clip.mov"));
         next.Items[0].SelectedTarget = "mp4";
         next.SelectedItem = next.Items[0];
+        next.Detail.ScopeIsAll = true;
         next.Detail.ResetCommand.Execute(null);
         next.Detail.SelectedPreset = next.Detail.Presets.Single(p => p.Name == "Phone upload");
         Assert.Equal("720", next.Settings.FormatSettings["mp4"][K.MaxHeight]);
@@ -344,6 +359,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
 
         // every JPG at most 200 wide; the first file at most 100
         viewModel.SelectedItem = viewModel.Items[0];
+        viewModel.Detail.ScopeIsAll = true;
         Box(viewModel, K.MaxWidth).Text = "200";
         viewModel.Detail.OnlyThisFile = true;
         Box(viewModel, K.MaxWidth).Text = "100";

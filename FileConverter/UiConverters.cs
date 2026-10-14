@@ -7,9 +7,9 @@ using FileConverter.Core;
 namespace FileConverter;
 
 /// <summary>
-/// The colour of a settings group (1, 2, 3 …): files that convert with the same Format settings
-/// share one. Eight colours that read on dark and light alike; a ninth group starts them again,
-/// its number telling it apart.
+/// The colour of a settings group (1, 2, 3 …): files given the same settings of their own share
+/// one. Eight colours that read on dark and light alike; a ninth group starts them again, its
+/// number telling it apart.
 /// </summary>
 public sealed class GroupToBrushConverter : IValueConverter
 {

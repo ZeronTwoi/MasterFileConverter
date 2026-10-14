@@ -3,6 +3,31 @@
 The part for a version is also what its page under
 [Releases](https://github.com/ZeronTwoi/MasterFileConverter/releases) says.
 
+## 2.6.1
+
+Groups that do what they say.
+
+- **What is selected is what is set.** Format settings open on the files selected, so a change
+  made there is theirs alone. Every file of a format is set only when *Every file converted to
+  X, now and later* is chosen — before, that was where the panel opened, so a change meant for
+  two files went to every file of the format, to the files added afterwards, and to the next
+  session.
+- **Only files given settings of their own are in a group.** Files not touched, and files added
+  later, carry no group tag. What every file of a format gets is said with a plain *JPG
+  settings* mark instead, which a click opens.
+- **Group numbers stay put.** A group keeps its number and colour as long as it is there — when
+  files are added or removed, when another group is made, when its settings are changed for all
+  its files at once. A file reset, or set back to its format's way, leaves its group instead of
+  keeping the tag.
+- **A file's own settings stay with the format they were made for:** set to another format, it
+  has none of them there; set back, it finds them again.
+- **A click on a group's tag selects the whole group,** with its settings in the panel.
+- **The panel's Group list** puts the files selected in a group, giving them its settings, or in
+  none.
+- **Combining keeps groups apart.** With *Combine into one file*, each group becomes a file of
+  its own with its own settings — before, files' own settings were dropped when they were
+  combined. Two combined results that would get the same name no longer can.
+
 ## 2.6.0
 
 Compress a file in its own format, set several files at once, and a plainer speed setting.

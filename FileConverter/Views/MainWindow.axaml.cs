@@ -23,6 +23,8 @@ public partial class MainWindow : Window, IAppHost
         FileList.AddHandler(PointerMovedEvent, OnRowDragged, RoutingStrategies.Bubble, handledEventsToo: true);
         FileList.AddHandler(PointerReleasedEvent, (_, _) => _dragKeys = KeyModifiers.None, RoutingStrategies.Bubble,
             handledEventsToo: true);
+        // before the row takes the click for itself
+        FileList.AddHandler(PointerPressedEvent, OnChipPressed, RoutingStrategies.Tunnel);
         ConfirmStop = () => ConfirmDialog.AskAsync(this,
             "Files are still being converted",
             "Closing now stops them. What is finished stays; a file that is not finished yet is not kept.",
@@ -163,6 +165,36 @@ public partial class MainWindow : Window, IAppHost
         {
             selection.EndBatchUpdate();
         }
+    }
+
+    // ---------- a file's marks ----------
+    //
+    // A group's mark selects every file of the group, with its settings in the panel, to be seen
+    // or changed together; the mark of a format's settings shows those, for every file of it.
+
+    private void OnChipPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (ViewModel is not { } viewModel || !e.GetCurrentPoint(FileList).Properties.IsLeftButtonPressed) return;
+        var chip = (e.Source as Avalonia.Visual)?.GetSelfAndVisualAncestors().OfType<Border>()
+            .FirstOrDefault(b => b.Classes.Contains("chip"));
+        if (chip?.DataContext is not FileItemViewModel item) return;
+        e.Handled = true;
+
+        bool group = chip.Classes.Contains("groupchip");
+        var files = group ? viewModel.FilesOfGroup(item.Group) : [item];
+        var selection = FileList.Selection;
+        selection.BeginBatchUpdate();
+        try
+        {
+            selection.Clear();
+            foreach (var file in files) selection.Select(viewModel.Items.IndexOf(file));
+        }
+        finally
+        {
+            selection.EndBatchUpdate();
+        }
+        viewModel.DetailedSettingsOpen = true;
+        viewModel.Detail.OnlyThisFile = group;
     }
 
     /// <summary>The index of the row under a point of the list, or -1.</summary>

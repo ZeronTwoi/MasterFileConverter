@@ -40,13 +40,19 @@ public sealed class ConversionService
         return candidate;
     }
 
+    /// <summary>
+    /// <see cref="BuildOutputPath"/> for a result named by the caller: a combined file. Several
+    /// combined into one format in one batch (a group each) get a name each.
+    /// </summary>
     public static string BuildNamedOutputPath(string directory, string baseName, string targetExt,
-        ExistingFileAction whenExists = ExistingFileAction.KeepBoth)
+        ExistingFileAction whenExists = ExistingFileAction.KeepBoth, ISet<string>? reserved = null)
     {
         var candidate = Path.Combine(directory, $"{baseName}.{targetExt}");
-        if (whenExists != ExistingFileAction.KeepBoth) return candidate;
-        for (int i = 1; File.Exists(candidate); i++)
+        bool Taken(string path) =>
+            reserved?.Contains(path) == true || (whenExists == ExistingFileAction.KeepBoth && File.Exists(path));
+        for (int i = 1; Taken(candidate); i++)
             candidate = Path.Combine(directory, $"{baseName} ({i}).{targetExt}");
+        reserved?.Add(candidate);
         return candidate;
     }
 
@@ -153,16 +159,18 @@ public sealed class ConversionService
     /// files → one archive). Inputs are ordered by natural filename order and the
     /// output is named from their common prefix or the containing folder.
     /// Returns the produced file's path, or null when it exists and the user chose to skip.
+    /// The name is chosen before this first waits, so a batch's <paramref name="reserved"/> set
+    /// is only ever touched by the thread that started it.
     /// </summary>
     public async Task<string?> ConvertManyAsync(IReadOnlyList<string> inputs, string targetExt,
         ConversionOptions options, string? outputDirectory, IProgress<double>? progress, CancellationToken ct,
-        ExistingFileAction whenExists = ExistingFileAction.KeepBoth)
+        ExistingFileAction whenExists = ExistingFileAction.KeepBoth, ISet<string>? reserved = null)
     {
         if (inputs.Count == 0) throw new ArgumentException("No input files.", nameof(inputs));
 
         var sorted = NaturalSort.SortPathsByFileName(inputs);
         var dir = outputDirectory ?? Path.GetDirectoryName(sorted[0])!;
-        var output = BuildNamedOutputPath(dir, MergeConversion.SuggestBaseName(sorted), targetExt, whenExists);
+        var output = BuildNamedOutputPath(dir, MergeConversion.SuggestBaseName(sorted), targetExt, whenExists, reserved);
         bool replacing = File.Exists(output);
         if (replacing && whenExists == ExistingFileAction.Skip) return null;
 

@@ -10,7 +10,9 @@ using FileConverter.Core.Converters;
 using FileConverter.Core.Settings;
 using FileConverter.ViewModels;
 using FileConverter.Views;
+using Avalonia.VisualTree;
 using ImageMagick;
+using UglyToad.PdfPig;
 using Xunit;
 using K = FileConverter.Core.Settings.SettingKeys;
 
@@ -251,6 +253,363 @@ public class CompressAndGroupTests(Samples samples) : IClassFixture<Samples>
         viewModel.SetSelection([a, b]);
         Assert.Equal("", Box(viewModel, K.Quality).Text);
         Assert.Equal("Not the same in all 2", Box(viewModel, K.Quality).Watermark);
+    }
+
+    /// <summary>What is selected is what is set: the files not selected, and the ones added later, are in no group.</summary>
+    [AvaloniaFact]
+    public async Task OnlyTheFilesSelectedFormAGroup()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png", "c.png", "d.png"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        viewModel.DetailedSettingsOpen = true;
+        var (a, b, c, d) = (viewModel.Items[0], viewModel.Items[1], viewModel.Items[2], viewModel.Items[3]);
+
+        // a and b selected, a setting changed — the panel left as it opened
+        viewModel.SelectedItem = a;
+        viewModel.SetSelection([a, b]);
+        Assert.True(viewModel.Detail.OnlyThisFile);
+        Way(viewModel, SizeModes.Quality);
+
+        Assert.Equal(1, a.Group);
+        Assert.Equal(1, b.Group);
+        Assert.All(new[] { c, d }, row => Assert.False(row.HasGroup || row.HasFormatMark || row.HasCustomSettings));
+        Assert.Empty(viewModel.Settings.FormatSettings);           // nothing for every JPG, nothing for next time
+
+        await viewModel.AddPathsAsync(Files(folder, "e.png", "f.png"));
+        foreach (var row in viewModel.Items.Skip(4))
+        {
+            row.SelectedTarget = "jpg";
+            Assert.Equal(0, row.Group);
+            Assert.False(row.HasFormatMark);
+        }
+        Assert.Equal("Not for 2 of 6 JPG files: set in Format settings", viewModel.SliderExceptionText);
+    }
+
+    /// <summary>What every file of a format gets is said on each, plainly — it is no group.</summary>
+    [AvaloniaFact]
+    public async Task WhatEveryFileOfAFormatGetsIsMarkedButIsNoGroup()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        viewModel.DetailedSettingsOpen = true;
+        var (a, b) = (viewModel.Items[0], viewModel.Items[1]);
+
+        viewModel.SelectedItem = a;
+        viewModel.Detail.ScopeIsAll = true;
+        Assert.Equal("Every file converted to JPG, now and later", viewModel.Detail.ScopeAllText);
+        Box(viewModel, K.MaxWidth).Text = "1280";
+
+        foreach (var row in viewModel.Items)
+        {
+            Assert.Equal(0, row.Group);
+            Assert.True(row.HasFormatMark);
+            Assert.Equal("JPG settings", row.FormatMarkText);
+            Assert.Contains("1280", row.FormatTip);
+        }
+
+        // a's own on top: a group of its own, whose mark replaces the format's
+        viewModel.Detail.OnlyThisFile = true;
+        Box(viewModel, K.MaxWidth).Text = "640";
+        Assert.Equal(1, a.Group);
+        Assert.False(a.HasFormatMark);
+        Assert.Contains("640", a.GroupTip);
+        Assert.True(b.HasFormatMark);
+
+        // the same as its format's is nothing of its own: no group
+        Box(viewModel, K.MaxWidth).Text = "1280";
+        Assert.Equal(0, a.Group);
+        Assert.True(a.HasFormatMark);
+
+        // and with the format's settings gone, no mark is left anywhere
+        viewModel.Detail.ScopeIsAll = true;
+        viewModel.Detail.ResetCommand.Execute(null);
+        viewModel.Detail.OnlyThisFile = true;
+        viewModel.Detail.ResetCommand.Execute(null);
+        Assert.All(viewModel.Items, row => Assert.False(row.HasGroup || row.HasFormatMark));
+    }
+
+    /// <summary>A group keeps its number and colour while it is there, whatever happens around it.</summary>
+    [AvaloniaFact]
+    public async Task GroupsKeepTheirNumbers()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png", "c.png", "d.png"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        viewModel.DetailedSettingsOpen = true;
+        var (a, b, c, d) = (viewModel.Items[0], viewModel.Items[1], viewModel.Items[2], viewModel.Items[3]);
+        void Select(params FileItemViewModel[] rows)
+        {
+            viewModel.SelectedItem = rows[0];
+            viewModel.SetSelection(rows);
+        }
+
+        // made bottom first: the group made first is Group 1 wherever it is in the list
+        Select(d);
+        Way(viewModel, SizeModes.Percent);
+        Select(a, b);
+        Way(viewModel, SizeModes.Quality);
+        Box(viewModel, K.Quality).Text = "70";
+        Assert.Equal((2, 2, 0, 1), (a.Group, b.Group, c.Group, d.Group));
+
+        // changed for all its files at once: still the same group
+        Box(viewModel, K.Quality).Text = "60";
+        Assert.Equal((2, 2, 1), (a.Group, b.Group, d.Group));
+
+        // changed for one of them: that one starts a new group, the rest stay
+        Select(a);
+        Box(viewModel, K.Quality).Text = "50";
+        Assert.Equal((3, 2, 1), (a.Group, b.Group, d.Group));
+
+        // a group gone frees its number for the next new one; the others keep theirs
+        viewModel.RemoveItemCommand.Execute(b);
+        Select(c);
+        Way(viewModel, SizeModes.Quality);
+        Assert.Equal((3, 2, 1), (a.Group, c.Group, d.Group));
+
+        // out of its group: no number left on it
+        Select(d);
+        viewModel.Detail.ResetCommand.Execute(null);
+        Assert.Equal((3, 2, 0), (a.Group, c.Group, d.Group));
+        Assert.False(d.HasGroup);
+    }
+
+    /// <summary>A file's own settings belong to the conversion they were made for.</summary>
+    [AvaloniaFact]
+    public async Task AFilesOwnSettingsStayWithItsTarget()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        viewModel.DetailedSettingsOpen = true;
+        var a = viewModel.Items[0];
+        viewModel.SelectedItem = a;
+        Way(viewModel, SizeModes.Percent);
+        Box(viewModel, K.SizePercent).Text = "30";
+        Assert.Equal(1, a.Group);
+
+        a.SelectedTarget = "webp";                   // another conversion: none of them there
+        Assert.Equal(0, a.Group);
+        Assert.Empty(a.Overrides);
+        Assert.True(viewModel.EffectiveSettings(a).IsEmpty);
+        Assert.Null(viewModel.SliderExceptionText);
+
+        a.SelectedTarget = "jpg";                    // set back: they are there again
+        Assert.Equal(1, a.Group);
+        Assert.Equal(30, viewModel.EffectiveSettings(a).Int(K.SizePercent));
+    }
+
+    /// <summary>Taking back a choice leaves nothing of its own behind, and a file's own values hold when its format's way changes.</summary>
+    [AvaloniaFact]
+    public async Task AFileFollowsItsFormatUnlessItWasGivenSomethingElse()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        viewModel.DetailedSettingsOpen = true;
+        var (a, b) = (viewModel.Items[0], viewModel.Items[1]);
+        viewModel.SelectedItem = a;
+
+        Way(viewModel, SizeModes.Percent);           // its own size…
+        Assert.Equal(1, a.Group);
+        Way(viewModel, SizeModes.Slider);            // …taken back: nothing of its own, no group
+        Assert.Empty(a.Overrides);
+        Assert.Equal(0, a.Group);
+
+        // a fixed quality for every JPG; the file takes the same way: it simply follows it
+        viewModel.Detail.ScopeIsAll = true;
+        Way(viewModel, SizeModes.Quality);
+        viewModel.Detail.OnlyThisFile = true;
+        Assert.Equal(SizeModes.Quality, ((ChoiceSettingRow)Row(viewModel, K.SizeMode)).Selected!.Value);
+        Way(viewModel, SizeModes.Quality);
+        Assert.Empty(a.Overrides);
+
+        // a quality of its own stays its own when every JPG is given a file size instead
+        Box(viewModel, K.Quality).Text = "70";
+        Assert.Equal(1, a.Group);
+        viewModel.Detail.ScopeIsAll = true;
+        Way(viewModel, SizeModes.Percent);
+        Assert.Equal(70, viewModel.EffectiveSettings(a).Int(K.Quality));
+        Assert.False(viewModel.EffectiveSettings(a).Has(K.SizePercent));
+        Assert.Equal(50, viewModel.EffectiveSettings(b).Int(K.SizePercent));
+        Assert.Equal(1, a.Group);
+    }
+
+    /// <summary>The panel's Group list puts the files selected in a group, or in none.</summary>
+    [AvaloniaFact]
+    public async Task FilesArePutInAGroupOrTakenOutOfIt()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        await viewModel.AddPathsAsync(Files(folder, "a.png", "b.png", "c.png", "d.png", "report.pdf"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        viewModel.DetailedSettingsOpen = true;
+        var (a, b, c, d, pdf) = (viewModel.Items[0], viewModel.Items[1], viewModel.Items[2], viewModel.Items[3], viewModel.Items[4]);
+        void Select(params FileItemViewModel[] rows)
+        {
+            viewModel.SelectedItem = rows[0];
+            viewModel.SetSelection(rows);
+        }
+
+        // no group yet: nothing to choose from
+        Select(c);
+        Assert.False(viewModel.Detail.ShowGroupChoice);
+
+        Select(a, b);
+        Way(viewModel, SizeModes.Quality);
+        Box(viewModel, K.Quality).Text = "70";
+        Box(viewModel, K.MaxWidth).Text = "800";
+        Assert.True(viewModel.Detail.ShowGroupChoice);
+        Assert.Equal(1, viewModel.Detail.SelectedGroup!.Number);
+
+        // c put in Group 1: it gets what a and b have
+        Select(c);
+        Assert.Equal(["None — as every JPG", "Group 1 · 2 files"], viewModel.Detail.GroupChoices.Select(g => g.Label));
+        Assert.Equal(0, viewModel.Detail.SelectedGroup!.Number);
+        viewModel.Detail.SelectedGroup = viewModel.Detail.GroupChoices.Single(g => g.Number == 1);
+        Assert.Equal(1, c.Group);
+        Assert.Equal("800", Box(viewModel, K.MaxWidth).Text);
+        Assert.Equal(viewModel.EffectiveSettings(a).Values, viewModel.EffectiveSettings(c).Values);
+
+        // files in different groups show none; a and c taken out of theirs
+        Select(c, d);
+        Assert.Null(viewModel.Detail.SelectedGroup);
+        Select(a, c);
+        Assert.Equal("Group 1 · 3 files", viewModel.Detail.SelectedGroup!.Label);
+        viewModel.Detail.SelectedGroup = viewModel.Detail.GroupChoices.Single(g => g.Number == 0);
+        Assert.Equal((0, 1, 0), (a.Group, b.Group, c.Group));
+        Assert.Empty(a.Overrides);
+
+        // a PDF's pages as JPG are not converted like a photo: no group of photos is offered for it
+        pdf.SelectedTarget = "jpg";
+        Select(pdf);
+        Assert.False(viewModel.Detail.ShowGroupChoice);
+    }
+
+    /// <summary>A click on a group's mark selects its files; on a format's mark, it shows that format's settings.</summary>
+    [AvaloniaFact]
+    public async Task AFilesMarkCanBeClicked()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var window = new MainWindow { DataContext = viewModel, Width = 1180, Height = 760 };
+        window.Show();
+        await viewModel.AddPathsAsync(Files(folder, "beach.png", "cliffs.png", "harbour.png", "sunset.png"));
+        viewModel.BulkTarget = "jpg";
+        viewModel.CombineFiles = false;
+        var rows = viewModel.Items;
+
+        // beach and harbour a size of their own; every JPG at most 1600 wide
+        viewModel.DetailedSettingsOpen = true;
+        viewModel.SelectedItem = rows[0];
+        viewModel.SetSelection([rows[0], rows[2]]);
+        Way(viewModel, SizeModes.Percent);
+        viewModel.Detail.ScopeIsAll = true;
+        Box(viewModel, K.MaxWidth).Text = "1600";
+        viewModel.DetailedSettingsOpen = false;
+        Dispatcher.UIThread.RunJobs();
+
+        var list = window.FindControl<ListBox>("FileList")!;
+        void ClickMark(int row, string kind)
+        {
+            var mark = list.ContainerFromIndex(row)!.GetVisualDescendants().OfType<Border>()
+                .Single(b => b.Classes.Contains(kind) && b.IsEffectivelyVisible);
+            var at = mark.TranslatePoint(new Point(mark.Bounds.Width / 2, mark.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+        }
+        int[] Selected() => viewModel.SelectedItems.Select(rows.IndexOf).ToArray();
+
+        ClickMark(2, "groupchip");
+        Assert.Equal([0, 2], Selected());
+        Assert.True(viewModel.DetailedSettingsOpen);
+        Assert.True(viewModel.Detail.OnlyThisFile);
+        Assert.Equal("Group 1 · 2 files", viewModel.Detail.SelectedGroup!.Label);
+        Directory.CreateDirectory(ScreenshotDir);
+        window.CaptureRenderedFrame()!.Save(Path.Combine(ScreenshotDir, "14-group-selected.png"),
+            Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+
+        ClickMark(3, "formatchip");
+        Assert.Equal([3], Selected());
+        Assert.True(viewModel.Detail.ScopeIsAll);
+        Assert.Equal("1600", Box(viewModel, K.MaxWidth).Text);
+
+        // cliffs put in Group 1 with the panel's own list, which fills itself again as it is used
+        var cliffs = list.ContainerFromIndex(1)!.TranslatePoint(new Point(130, 20), window)!.Value;
+        window.MouseDown(cliffs, MouseButton.Left);
+        window.MouseUp(cliffs, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal([1], Selected());
+        var groupList = window.GetVisualDescendants().OfType<ComboBox>()
+            .Single(c => Avalonia.Automation.AutomationProperties.GetName(c) == "Group");
+        Assert.True(groupList.IsEffectivelyVisible);
+        groupList.SelectedItem = viewModel.Detail.GroupChoices.Single(g => g.Number == 1);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, rows[1].Group);
+        Assert.Equal("Group 1 · 3 files", ((GroupChoice)groupList.SelectedItem!).Label);
+        Assert.Equal(3, viewModel.FilesOfGroup(1).Count);
+        window.Close();
+    }
+
+    /// <summary>Combining keeps the groups apart: each becomes a file of its own, with its own settings.</summary>
+    [AvaloniaFact]
+    public async Task EachGroupIsCombinedByItself()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var names = new[] { "shot1.png", "shot2.png", "shot3.png", "shot4.png" };
+        foreach (var name in names)
+        {
+            using var picture = Samples.Picture(320, 240);
+            picture.Write(folder.File(name), MagickFormat.Png);
+        }
+        await viewModel.AddPathsAsync(names.Select(folder.File));
+        viewModel.BulkTarget = "pdf";
+        viewModel.CombineFiles = true;
+        viewModel.DetailedSettingsOpen = true;
+        var rows = viewModel.Items;
+        Assert.True(viewModel.IsMerged(rows[2]));
+        Assert.Equal("4 files → one PDF  (shot1.png → shot4.png)", viewModel.MergeHint);
+
+        // shot3 and shot4 on A4 pages: they are combined by themselves
+        viewModel.SelectedItem = rows[2];
+        viewModel.SetSelection([rows[2], rows[3]]);
+        Assert.NotNull(viewModel.Detail.MergeNote);
+        var size = (ChoiceSettingRow)Row(viewModel, K.PageSize);
+        size.Selected = size.Options.Single(o => o.Value == "a4");
+        Assert.Equal(1, rows[2].Group);
+        Assert.True(viewModel.IsMerged(rows[2]) && viewModel.IsMerged(rows[0]));
+        Assert.Equal("2 files → one PDF  (shot1.png → shot2.png)   ·   Group 1: 2 files → one PDF  (shot3.png → shot4.png)",
+            viewModel.MergeHint);
+
+        await viewModel.ConvertAllCommand.ExecuteAsync(null);
+        Assert.All(rows, row => Assert.Equal(ItemState.Done, row.State));
+        var plain = rows[0].OutputPath!;
+        var onA4 = rows[2].OutputPath!;
+        Assert.Equal(plain, rows[1].OutputPath);
+        Assert.Equal(onA4, rows[3].OutputPath);
+        Assert.NotEqual(plain, onA4);                // the same name suggested for both, one numbered
+
+        using var first = PdfDocument.Open(plain);
+        using var second = PdfDocument.Open(onA4);
+        Assert.Equal(2, first.NumberOfPages);
+        Assert.Equal(2, second.NumberOfPages);
+        var page = second.GetPage(1);
+        Assert.Equal(842, Math.Max(page.Width, page.Height), 0);
+        Assert.NotEqual(842, Math.Max(first.GetPage(1).Width, first.GetPage(1).Height), 0);
     }
 
     [AvaloniaFact]

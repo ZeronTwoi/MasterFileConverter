@@ -184,13 +184,22 @@
                                                TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
                                     <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                                         <TextBlock Classes="dim" Text="{Binding SizeText}" FontSize="11.5" VerticalAlignment="Center" />
-                                        <!-- its settings group: one colour for every file with the same Format settings -->
-                                        <Border Margin="8,0,0,0" CornerRadius="4" Padding="6,0" VerticalAlignment="Center"
+                                        <!-- its group: one colour for every file given the same settings of its own;
+                                             a click selects them all (MainWindow.axaml.cs) -->
+                                        <Border Classes="chip groupchip" Margin="8,0,0,0"
                                                 Background="{Binding Group, Converter={StaticResource GroupToBrush}}"
-                                                IsVisible="{Binding HasCustomSettings}" ToolTip.Tip="{Binding GroupTip}"
+                                                IsVisible="{Binding HasGroup}" ToolTip.Tip="{Binding GroupTip}"
                                                 AutomationProperties.Name="{Binding GroupTip}">
                                             <TextBlock Text="{Binding GroupText}" FontSize="10.5" FontWeight="SemiBold"
                                                        Foreground="{StaticResource ChipTextBrush}" />
+                                        </Border>
+                                        <!-- in no group, but with what every file of its format gets: said plainly, in
+                                             no group's colour; a click shows those settings -->
+                                        <Border Classes="chip formatchip" Margin="8,0,0,0"
+                                                BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                                                IsVisible="{Binding HasFormatMark}" ToolTip.Tip="{Binding FormatTip}"
+                                                AutomationProperties.Name="{Binding FormatTip}">
+                                            <TextBlock Classes="dim" Text="{Binding FormatMarkText}" FontSize="10.5" />
                                         </Border>
                                     </StackPanel>
                                 </StackPanel>
@@ -270,11 +279,35 @@
                 <ScrollViewer Grid.Row="1" IsVisible="{Binding HasSettings}" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="16,0,16,14">
 
-                        <!-- who the settings are for -->
-                        <RadioButton GroupName="DetailScope" Content="{Binding ScopeAllText}" IsChecked="{Binding ScopeIsAll}"
-                                     ToolTip.Tip="These settings are used for every file converted to this format, and are remembered for next time." />
+                        <!-- who the settings are for: the files selected, unless every file of the format is chosen -->
                         <RadioButton GroupName="DetailScope" Content="{Binding ScopeFileText}" IsChecked="{Binding OnlyThisFile}"
-                                     ToolTip.Tip="Settings for the selected file alone. Anything left empty follows the settings of every file of this format." />
+                                     ToolTip.Tip="Settings for the files selected alone: files given the same settings are shown as one group, in one colour. Anything left empty follows the settings of every file of this format." />
+                        <RadioButton GroupName="DetailScope" Content="{Binding ScopeAllText}" IsChecked="{Binding ScopeIsAll}"
+                                     ToolTip.Tip="Settings for every file converted to this format — the ones in the list and the ones added later. They are remembered for next time." />
+
+                        <!-- which group the files selected are in: one to join, or none -->
+                        <Grid ColumnDefinitions="*,172" Margin="0,10,0,0" IsVisible="{Binding ShowGroupChoice}"
+                              Background="Transparent"
+                              ToolTip.Tip="Put the files selected in a group — they get the settings its files have — or in none: they then have no settings of their own and convert like every file of this format.">
+                            <TextBlock Text="Group" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding GroupChoices}"
+                                      SelectedItem="{Binding SelectedGroup}" PlaceholderText="Not the same for all"
+                                      AutomationProperties.Name="Group">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GroupChoice">
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <Border Width="10" Height="10" CornerRadius="3" VerticalAlignment="Center"
+                                                    Background="{Binding Number, Converter={StaticResource GroupToBrush}}"
+                                                    IsVisible="{Binding IsGroup}" />
+                                            <TextBlock Text="{Binding Label}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
+                        <TextBlock Classes="dim" Text="{Binding MergeNote}" TextWrapping="Wrap" FontSize="11.5" Margin="0,10,0,0"
+                                   IsVisible="{Binding MergeNote, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
                         <!-- presets -->
                         <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0" IsVisible="{Binding HasPresets}">

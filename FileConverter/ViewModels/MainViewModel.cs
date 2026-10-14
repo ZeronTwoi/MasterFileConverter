@@ -743,20 +743,29 @@ public partial class MainViewModel : ObservableObject
         if (!definition.IsSecret) Persist();
     }
 
-    /// <summary>Is this file about to be combined with others into one result?</summary>
-    public bool IsMerged(FileItemViewModel item) =>
-        CombineFiles && item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target, item.Extension) &&
-        Items.Count(i => i.SelectedTarget == target && MergeConversion.CanMerge(i.Category, target, i.Extension)) >= 2;
+    /// <summary>The files of the list that are combined with others into one result, as last worked out.</summary>
+    private HashSet<FileItemViewModel> _merged = [];
 
-    /// <summary>How many files are heading for each target they could be combined into.</summary>
-    private Dictionary<string, int> CombinableCounts()
-    {
-        var counts = new Dictionary<string, int>();
-        foreach (var item in Items)
-            if (item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target, item.Extension))
-                counts[target] = counts.GetValueOrDefault(target) + 1;
-        return counts;
-    }
+    /// <summary>Is this file about to be combined with others into one result?</summary>
+    public bool IsMerged(FileItemViewModel item) => _merged.Contains(item);
+
+    /// <summary>
+    /// The results that combine several files, when files are combined: one for each target the
+    /// files can be combined into — and within it one for each group, so that files given
+    /// settings of their own are combined by themselves, with those settings. Two files at least
+    /// make one.
+    /// </summary>
+    private List<(string Target, List<FileItemViewModel> Items)> MergePlan(IEnumerable<FileItemViewModel> items) =>
+        items
+            .Where(i => i.SelectedTarget is { } target && MergeConversion.CanMerge(i.Category, target, i.Extension))
+            .GroupBy(i => i.SelectedTarget + "\n" + Signature(EffectiveSettings(i, merging: true)), StringComparer.Ordinal)
+            .Where(g => g.Count() >= 2)
+            .Select(g => (g.First().SelectedTarget!, g.ToList()))
+            .ToList();
+
+    /// <summary>Settings as one line of text, the same for the same settings whatever order they were set in.</summary>
+    private static string Signature(DetailSettings settings) =>
+        string.Join("\n", settings.Values.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Key + "=" + p.Value));
 
     /// <summary>The settings a conversion has, and which of them the panel can set, by source type, target and "combined".</summary>
     private readonly Dictionary<(string Extension, string Target, bool Merged), (IReadOnlyList<SettingDefinition> All, HashSet<string> Applicable)> _settingsOf = [];
@@ -780,17 +789,20 @@ public partial class MainViewModel : ObservableObject
     /// for PDF → JPG says nothing about photo → JPG), and of the size and quality settings only
     /// those of the way chosen.
     /// </summary>
-    public DetailSettings EffectiveSettings(FileItemViewModel item, bool? merging = null)
+    /// <param name="own">False: as it would convert without settings of its own.</param>
+    public DetailSettings EffectiveSettings(FileItemViewModel item, bool? merging = null, bool own = true)
     {
         if (item.SelectedTarget is not { } target) return DetailSettings.None;
         // nothing set for the format or the file: nothing to work out — the usual case, and in a
         // long list the one that must not cost a look at every other row
         var format = FormatValues(target);
-        if (format.Count == 0 && item.Overrides.Count == 0) return DetailSettings.None;
+        var overrides = own ? item.Overrides : NoValues;
+        if (format.Count == 0 && overrides.Count == 0) return DetailSettings.None;
         bool merged = merging ?? IsMerged(item);
 
-        // a combined result belongs to no single file, so only the format's settings apply to it
-        var all = DetailSettings.Merge(format, merged ? null : item.Overrides);
+        // files combined into one result are combined with files of the same settings only, so a
+        // file's own settings are those of the result it is part of
+        var all = DetailSettings.Merge(format, overrides);
         if (all.IsEmpty) return all;
 
         var (definitions, applicable) = SettingsOf(item.Extension, target, merged);
@@ -806,74 +818,190 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string? _sliderExceptionText;
 
-    /// <summary>Called by the panel after any change: refreshes the "custom" marks in the list.</summary>
-    public void OnDetailSettingsChanged() => RefreshCustomMarks();
+    /// <summary>
+    /// Called by the panel after any change: refreshes the marks in the list — and the panel
+    /// itself, should the change have taken its files out of a combined result or into one.
+    /// </summary>
+    public void OnDetailSettingsChanged()
+    {
+        RefreshCustomMarks();
+        ShowDetail();
+    }
 
     /// <summary>
-    /// Marks every row that converts with Format settings, and puts rows with exactly the same
-    /// settings into one numbered, coloured group — so several groups with settings of their own
-    /// can be told apart at a glance. Also says under the File size slider which files it does
-    /// not decide.
+    /// The groups whose files are converted the same way as this one (and so can share its
+    /// settings), by number, with how many files each has.
+    /// </summary>
+    public IReadOnlyList<(int Number, int Count)> GroupsLike(FileItemViewModel item) =>
+        Items.Where(i => i.Group > 0 && ConvertTheSameWay([item, i]))
+            .GroupBy(i => i.Group).OrderBy(g => g.Key)
+            .Select(g => (g.Key, Items.Count(i => i.Group == g.Key))).ToList();
+
+    /// <summary>Every file of a group, in list order.</summary>
+    public IReadOnlyList<FileItemViewModel> FilesOfGroup(int number) =>
+        number <= 0 ? [] : Items.Where(i => i.Group == number).ToList();
+
+    /// <summary>
+    /// Puts files in a group — gives them the settings of their own that its files have — or,
+    /// with 0, in none: takes their settings of their own away.
+    /// </summary>
+    public void PutInGroup(IReadOnlyList<FileItemViewModel> items, int number)
+    {
+        var model = number > 0 && items.Count > 0
+            ? Items.FirstOrDefault(i => i.Group == number && ConvertTheSameWay([items[0], i]))
+            : null;
+        if (number > 0 && model == null) return;
+        var settings = model?.Overrides.ToList() ?? [];
+        foreach (var item in items)
+        {
+            if (item == model) continue;
+            item.Overrides.Clear();
+            foreach (var (key, value) in settings) item.Overrides[key] = value;
+        }
+        OnDetailSettingsChanged();
+    }
+
+    /// <summary>
+    /// The number each group of settings had when the marks were last worked out, so that a group
+    /// keeps its number and colour for as long as it is there.
+    /// </summary>
+    private Dictionary<string, int> _groupNumbers = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Marks the rows that convert with Format settings. Files given settings of their own that
+    /// make them convert unlike the rest of their format go into numbered, coloured groups — the
+    /// same settings, the same group — so several groups can be told apart at a glance; files
+    /// that only have what every file of their format has get a plain mark that says so. Also
+    /// works out which files are combined, and says under the File size slider which files it
+    /// does not decide.
     /// </summary>
     private void RefreshCustomMarks()
     {
-        // counted once for the whole list, not once per row
-        Dictionary<string, int>? combinable = null;
-        var groups = new Dictionary<string, (int Number, string Tip)>(StringComparer.Ordinal);
+        var plan = MergePlan(Items);
+        var merged = CombineFiles ? plan.SelectMany(g => g.Items).ToHashSet() : [];
+        _merged = merged;
+
+        // the files of each group, in list order, with the number each had before
+        var groups = new Dictionary<string, List<(FileItemViewModel Item, int Before)>>(StringComparer.Ordinal);
+        var tips = new Dictionary<string, (string Target, IReadOnlyList<SettingDefinition> Definitions, DetailSettings Settings)>(StringComparer.Ordinal);
         var perTarget = new SortedDictionary<string, (int All, int Own)>(StringComparer.Ordinal);
         foreach (var item in Items)
         {
+            int before = item.Group;
             if (item.SelectedTarget is not { } target)
             {
                 item.HasCustomSettings = false;
+                item.FormatTip = null;
                 item.Group = 0;
                 continue;
             }
-            bool merged = false;
-            if (CombineFiles && MergeConversion.CanMerge(item.Category, target, item.Extension))
-                merged = (combinable ??= CombinableCounts()).GetValueOrDefault(target) >= 2;
-            var effective = EffectiveSettings(item, merged);
-            var definitions = SettingsOf(item.Extension, target, merged).All;
+            bool isMerged = merged.Contains(item);
+            var effective = EffectiveSettings(item, isMerged);
+            var definitions = SettingsOf(item.Extension, target, isMerged).All;
             item.HasCustomSettings = !effective.IsEmpty;
 
             var name = target.ToUpperInvariant();
             var counts = perTarget.GetValueOrDefault(name);
-            bool own = !effective.IsEmpty && SettingCatalog.ReplacesSlider(definitions, effective.Values);
-            perTarget[name] = (counts.All + 1, counts.Own + (own ? 1 : 0));
+            bool replaces = !effective.IsEmpty && SettingCatalog.ReplacesSlider(definitions, effective.Values);
+            perTarget[name] = (counts.All + 1, counts.Own + (replaces ? 1 : 0));
 
-            if (effective.IsEmpty)
+            // in a group only when what it was given of its own changes anything
+            var signature = Signature(effective);
+            var formatOnly = item.Overrides.Count == 0 ? effective : EffectiveSettings(item, isMerged, own: false);
+            if (item.Overrides.Count == 0 || signature == Signature(formatOnly))
             {
                 item.Group = 0;
+                item.FormatTip = effective.IsEmpty ? null : DescribeFormatSettings(name, definitions, effective);
                 continue;
             }
-            var signature = target + "\n" + string.Join("\n", effective.Values.OrderBy(p => p.Key, StringComparer.Ordinal)
-                .Select(p => p.Key + "=" + p.Value));
-            if (!groups.TryGetValue(signature, out var group))
-                groups[signature] = group = (groups.Count + 1, DescribeGroup(groups.Count + 1, name, definitions, effective));
-            item.Group = group.Number;
-            item.GroupTip = group.Tip;
+            item.FormatTip = null;
+            var key = target + "\n" + signature;
+            if (!groups.TryGetValue(key, out var members))
+            {
+                groups[key] = members = [];
+                tips[key] = (name, definitions, effective);
+            }
+            members.Add((item, before));
+        }
+
+        var numbers = NumberGroups(groups);
+        foreach (var (key, members) in groups)
+        {
+            var (target, definitions, settings) = tips[key];
+            var tip = DescribeGroup(numbers[key], target, definitions, settings);
+            foreach (var (item, _) in members)
+            {
+                item.GroupTip = tip;
+                item.Group = numbers[key];
+            }
         }
 
         var exceptions = perTarget.Where(p => p.Value.Own > 0)
             .Select(p => p.Value.Own == p.Value.All ? p.Key : $"{p.Value.Own} of {p.Value.All} {p.Key} files").ToList();
         SliderExceptionText = exceptions.Count == 0 ? null : $"Not for {string.Join(", ", exceptions)}: set in Format settings";
+        RefreshMergeHint(plan);
     }
 
-    /// <summary>"Group 2 → MP4: Set by: Own file size · File size (%): 50 · Maximum width (px): 1280", and what a group is.</summary>
-    private static string DescribeGroup(int number, string target, IReadOnlyList<SettingDefinition> definitions, DetailSettings settings)
+    /// <summary>
+    /// Numbers the groups so that none changes its number under the user's eyes: a group whose
+    /// settings are as they were keeps its number; so does one whose settings were changed for all
+    /// its files at once (the number most of them had); a new group takes the lowest number free.
+    /// </summary>
+    private Dictionary<string, int> NumberGroups(Dictionary<string, List<(FileItemViewModel Item, int Before)>> groups)
     {
-        var parts = settings.Values.OrderBy(p => definitions.ToList().FindIndex(d => d.Key == p.Key)).Select(p =>
+        var numbers = new Dictionary<string, int>(StringComparer.Ordinal);
+        var taken = new HashSet<int>();
+        foreach (var key in groups.Keys)
+            if (_groupNumbers.TryGetValue(key, out var number) && taken.Add(number))
+                numbers[key] = number;
+        foreach (var (key, members) in groups)
+        {
+            if (numbers.ContainsKey(key)) continue;
+            int had = members.Select(m => m.Before).Where(n => n > 0 && !taken.Contains(n))
+                .GroupBy(n => n).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+            if (had > 0 && taken.Add(had)) numbers[key] = had;
+        }
+        foreach (var key in groups.Keys)
+        {
+            if (numbers.ContainsKey(key)) continue;
+            int free = 1;
+            while (taken.Contains(free)) free++;
+            taken.Add(free);
+            numbers[key] = free;
+        }
+        _groupNumbers = numbers;
+        return numbers;
+    }
+
+    /// <summary>"Set by: Own file size · File size (%): 50 · Maximum width (px): 1280".</summary>
+    private static string DescribeSettings(IReadOnlyList<SettingDefinition> definitions, DetailSettings settings) =>
+        string.Join(" · ", settings.Values.OrderBy(p => IndexOf(definitions, p.Key)).Select(p =>
         {
             var definition = definitions.FirstOrDefault(d => d.Key == p.Key);
             if (definition == null) return p.Key;
             if (definition.IsSecret) return $"{definition.Label}: set";
             var shown = definition.Choices.FirstOrDefault(c => c.Value == p.Value)?.Label ?? p.Value;
             return $"{definition.Label}: {shown}";
-        });
-        return $"Group {number} → {target}: {string.Join(" · ", parts)}\n\n" +
-               "Files of one colour convert with the same Format settings. Select them (Ctrl- or Shift-click) and open " +
-               "Format settings to change them together; give some of them settings of their own to start another group.";
+        }));
+
+    private static int IndexOf(IReadOnlyList<SettingDefinition> definitions, string key)
+    {
+        for (int i = 0; i < definitions.Count; i++)
+            if (definitions[i].Key == key) return i;
+        return int.MaxValue;
     }
+
+    /// <summary>What a group's files share, and what a group is.</summary>
+    private static string DescribeGroup(int number, string target, IReadOnlyList<SettingDefinition> definitions, DetailSettings settings) =>
+        $"Group {number} → {target}: {DescribeSettings(definitions, settings)}\n\n" +
+        "Files of one colour were given the same settings of their own. Click here to select them all and see or change " +
+        "their settings together.";
+
+    /// <summary>What every file of a format gets, and where that is set.</summary>
+    private static string DescribeFormatSettings(string target, IReadOnlyList<SettingDefinition> definitions, DetailSettings settings) =>
+        $"Every file converted to {target}: {DescribeSettings(definitions, settings)}\n\n" +
+        $"These are the settings for every file converted to {target}, now and later — they are remembered for next time. " +
+        "Click here to see or change them.";
 
     // ---------- engines ----------
 
@@ -1043,18 +1171,26 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        var groups = ComputeMergeGroups(Items.Where(i => i.SelectedTarget != null));
-        HasMergeableGroups = groups.Count > 0;
-        MergeHint = string.Join("   ·   ", groups.Select(g =>
+        RefreshButtons();
+        RefreshCustomMarks();
+        ShowDetail();
+    }
+
+    /// <summary>
+    /// "3 files → one PDF (a.png → c.png) · Group 2: 2 files → one PDF (d.png → e.png)": what is
+    /// combined — or, while the box is not ticked, what would be.
+    /// </summary>
+    private void RefreshMergeHint(List<(string Target, List<FileItemViewModel> Items)> plan)
+    {
+        HasMergeableGroups = plan.Count > 0;
+        MergeHint = string.Join("   ·   ", plan.Select(g =>
         {
             var names = NaturalSort.SortPathsByFileName(g.Items.Select(i => i.SourcePath));
             var first = Path.GetFileName(names[0]);
             var last = Path.GetFileName(names[^1]);
-            return $"{g.Items.Count} files → one {g.Target.ToUpperInvariant()}  ({first} → {last})";
+            var group = g.Items[0].Group > 0 ? $"Group {g.Items[0].Group}: " : "";
+            return $"{group}{g.Items.Count} files → one {g.Target.ToUpperInvariant()}  ({first} → {last})";
         }));
-        RefreshButtons();
-        RefreshCustomMarks();
-        ShowDetail();
     }
 
     private void RefreshButtons()
@@ -1069,14 +1205,6 @@ public partial class MainViewModel : ObservableObject
             : "Convert all";
         ConvertAllCommand.NotifyCanExecuteChanged();
     }
-
-    /// <summary>Files sharing a combinable target (images → pdf/gif/tiff, anything → archive).</summary>
-    private static List<(string Target, List<FileItemViewModel> Items)> ComputeMergeGroups(IEnumerable<FileItemViewModel> items) =>
-        items.Where(i => i.SelectedTarget != null && MergeConversion.CanMerge(i.Category, i.SelectedTarget!, i.Extension))
-             .GroupBy(i => i.SelectedTarget!)
-             .Where(g => g.Count() >= 2)
-             .Select(g => (g.Key, g.ToList()))
-             .ToList();
 
     /// <summary>
     /// Adds files, and everything inside folders. A file of an unknown type that is added by
@@ -1306,10 +1434,8 @@ public partial class MainViewModel : ObservableObject
         // output names are claimed up front so files converting side by side can't collide
         var reserved = new HashSet<string>(PlatformServices.PathComparer);
 
-        // context-aware plan: files sharing a combinable target become one output
-        var mergeGroups = CombineFiles
-            ? ComputeMergeGroups(pending)
-            : new List<(string Target, List<FileItemViewModel> Items)>();
+        // context-aware plan: files sharing a combinable target, and the same settings, become one output
+        var mergeGroups = CombineFiles ? MergePlan(pending) : [];
         var mergedItems = mergeGroups.SelectMany(g => g.Items).ToHashSet();
         var singles = pending.Where(i => !mergedItems.Contains(i)).ToList();
 
@@ -1387,7 +1513,8 @@ public partial class MainViewModel : ObservableObject
                     if (item.State == ItemState.Converting) item.Progress = p * 100;
                 });
 
-                var result = await _service.ConvertAsync(item.SourcePath, output, OptionsFor(item), progress, token);
+                // converted by itself, even where it would have been combined with files that are done already
+                var result = await _service.ConvertAsync(item.SourcePath, output, OptionsFor(item, merging: false), progress, token);
 
                 item.OutputPath = result.OutputPath;
                 item.Progress = 100;
@@ -1422,7 +1549,7 @@ public partial class MainViewModel : ObservableObject
 
                 var produced = await _service.ConvertManyAsync(
                     group.Items.Select(i => i.SourcePath).ToList(),
-                    group.Target, OptionsFor(group.Items[0], merging: true), outputDirectory, progress, token, whenExists);
+                    group.Target, OptionsFor(group.Items[0], merging: true), outputDirectory, progress, token, whenExists, reserved);
 
                 if (produced == null)
                 {

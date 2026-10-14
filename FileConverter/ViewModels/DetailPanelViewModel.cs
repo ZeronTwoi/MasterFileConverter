@@ -96,6 +96,12 @@ public partial class ChoiceSettingRow : SettingRowViewModel
 
 public sealed record SettingGroupViewModel(string Name, IReadOnlyList<SettingRowViewModel> Rows);
 
+/// <summary>A group the selected files can be put in — or, as number 0, none: no settings of their own.</summary>
+public sealed record GroupChoice(int Number, string Label)
+{
+    public bool IsGroup => Number > 0;
+}
+
 /// <summary>A preset in the panel's list; the user's own can be deleted.</summary>
 public sealed record PresetChoice(SettingsPreset Preset, bool IsBuiltIn)
 {
@@ -103,12 +109,13 @@ public sealed record PresetChoice(SettingsPreset Preset, bool IsBuiltIn)
 }
 
 /// <summary>
-/// The Format settings panel: the precise settings of the selected files' conversion.
-/// They are kept per target format ("everything I turn into MP4") and can be overridden for
-/// the files selected — one, or several converted the same way, which then share them. Whatever
-/// is left empty stays automatic. What the bar at the bottom sets for all files — speed, where
-/// results go — is not here; size and quality are set in one of the two places, and the panel's
-/// "Set by" choice says which.
+/// The Format settings panel: the precise settings of the selected files' conversion. They are
+/// set for the files selected — one, or several converted the same way, which then share them
+/// and are shown as a group — or, when chosen, for every file converted to the format, now and
+/// later ("everything I turn into MP4"), which is remembered. Whatever is left empty stays
+/// automatic. What the bar at the bottom sets for all files — speed, where results go — is not
+/// here; size and quality are set in one of the two places, and the panel's "Set by" choice
+/// says which.
 /// </summary>
 public partial class DetailPanelViewModel : ObservableObject
 {
@@ -140,15 +147,33 @@ public partial class DetailPanelViewModel : ObservableObject
     [ObservableProperty]
     private string _emptyText = "Select a file to see the settings for its conversion.";
 
-    /// <summary>False: the settings are for every file with this target. True: for the selected file alone.</summary>
+    /// <summary>True: the settings are for the files selected alone. False: for every file with this target.</summary>
     [ObservableProperty]
-    private bool _onlyThisFile;
+    [NotifyPropertyChangedFor(nameof(ShowGroupChoice))]
+    private bool _onlyThisFile = true;
 
     [ObservableProperty]
     private string _scopeAllText = "Every file of this format";
 
     [ObservableProperty]
     private string _scopeFileText = "Only this file";
+
+    /// <summary>The groups the files selected can be put in, and "none"; offered while there is a group to choose.</summary>
+    public ObservableCollection<GroupChoice> GroupChoices { get; } = [];
+
+    /// <summary>The group the files selected are in; null while they are in different ones.</summary>
+    [ObservableProperty]
+    private GroupChoice? _selectedGroup;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowGroupChoice))]
+    private bool _hasGroupChoices;
+
+    public bool ShowGroupChoice => OnlyThisFile && HasGroupChoices;
+
+    /// <summary>Said while the files are combined into one result with others.</summary>
+    [ObservableProperty]
+    private string? _mergeNote;
 
     /// <summary>Set when the settings mean a stream is encoded again instead of copied.</summary>
     [ObservableProperty]
@@ -190,6 +215,10 @@ public partial class DetailPanelViewModel : ObservableObject
             Presets.Clear();
             SelectedPreset = null;
             Warning = null;
+            GroupChoices.Clear();
+            SelectedGroup = null;
+            HasGroupChoices = false;
+            MergeNote = null;
 
             if (item?.SelectedTarget is not { } target)
             {
@@ -222,12 +251,16 @@ public partial class DetailPanelViewModel : ObservableObject
             HasContext = true;
             Title = $"{target.ToUpperInvariant()} settings";
             Subtitle = items.Count == 1 ? $"{item.FileName}  →  {target}" : $"{items.Count} files  →  {target}";
-            ScopeAllText = $"Every file converted to {target.ToUpperInvariant()}";
+            ScopeAllText = $"Every file converted to {target.ToUpperInvariant()}, now and later";
             ScopeFileText = items.Count == 1 ? "Only this file" : $"Only these {items.Count} files";
-            // files that already have settings of their own open on them
-            OnlyThisFile = items.Any(i => i.Overrides.Count > 0);
+            // what is selected is what is set — every file of the format only when asked for
+            OnlyThisFile = true;
 
-            _definitions = SettingCatalog.For(item.Extension, target, _owner.IsMerged(item));
+            bool merged = _owner.IsMerged(item);
+            _definitions = SettingCatalog.For(item.Extension, target, merged);
+            if (merged)
+                MergeNote = $"Combined into one {target.ToUpperInvariant()} with the other files that have the same settings. " +
+                            $"Files given other settings here become a {target.ToUpperInvariant()} of their own.";
             HasSettings = _definitions.Any(d => d.InPanel);
             EmptyText = "This conversion has nothing to set here — it only has one way of being done.";
 
@@ -300,6 +333,44 @@ public partial class DetailPanelViewModel : ObservableObject
             }
         }
         RefreshWarning();
+        RefreshGroupChoices();
+    }
+
+    /// <summary>
+    /// Offers the groups of files converted the same way as the ones selected, so they can be
+    /// put in one — given the same settings — or taken out of theirs.
+    /// </summary>
+    private void RefreshGroupChoices()
+    {
+        bool was = _rebuilding;
+        _rebuilding = true;
+        try
+        {
+            GroupChoices.Clear();
+            if (_item?.SelectedTarget is not { } target) return;
+            var groups = _owner.GroupsLike(_item);
+            if (groups.Count == 0) return;
+            GroupChoices.Add(new GroupChoice(0, $"None — as every {target.ToUpperInvariant()}"));
+            foreach (var (number, count) in groups)
+                GroupChoices.Add(new GroupChoice(number, count == 1 ? $"Group {number} · 1 file" : $"Group {number} · {count} files"));
+            var theirs = _items.Select(i => i.Group).Distinct().ToList();
+            SelectedGroup = theirs.Count == 1 ? GroupChoices.FirstOrDefault(c => c.Number == theirs[0]) : null;
+        }
+        finally
+        {
+            HasGroupChoices = GroupChoices.Count > 0;
+            _rebuilding = was;
+        }
+    }
+
+    partial void OnSelectedGroupChanged(GroupChoice? value)
+    {
+        if (_rebuilding || value == null || _item?.SelectedTarget == null) return;
+        _owner.PutInGroup(_items, value.Number);
+        _rebuilding = true;
+        SelectedPreset = null;
+        _rebuilding = false;
+        ShowValues();
     }
 
     private static string Display(SettingDefinition definition, string value) =>
@@ -324,12 +395,38 @@ public partial class DetailPanelViewModel : ObservableObject
         else item.Overrides[definition.Key] = value;
     }
 
+    /// <summary>
+    /// After a change to the files' own settings: a file's own way of setting size and quality is
+    /// kept where it says something — a way unlike its format's, or the way its own values belong
+    /// to, which then stay in force should the format's way change — and dropped where it only
+    /// repeats its format's, so that nothing of their own is left where they have nothing of
+    /// their own.
+    /// </summary>
+    private void TidyModes(string target)
+    {
+        if (!OnlyThisFile) return;
+        var formatMode = SettingCatalog.ModeOf(_definitions, _owner.FormatValues(target));
+        foreach (var own in _items.Select(i => i.Overrides))
+        {
+            if (own.TryGetValue(SettingKeys.SizeMode, out var mode))
+            {
+                if (mode == formatMode && !_definitions.Any(d => d.Mode == mode && own.ContainsKey(d.Key)))
+                    own.Remove(SettingKeys.SizeMode);
+            }
+            else if (_definitions.FirstOrDefault(d => d.Mode != null && own.ContainsKey(d.Key)) is { Mode: { } valuesMode })
+            {
+                own[SettingKeys.SizeMode] = valuesMode;
+            }
+        }
+    }
+
     private void OnRowChanged(SettingRowViewModel row, string? value)
     {
         if (_rebuilding || _item?.SelectedTarget is not { } target) return;
 
         if (row.Definition.Key == SettingKeys.SizeMode) ChooseMode(target, row.Definition, value ?? SizeModes.Slider);
         else Store(target, row.Definition, value);
+        TidyModes(target);
 
         // a setting changed by hand is no longer "the preset"
         _rebuilding = true;
@@ -338,7 +435,11 @@ public partial class DetailPanelViewModel : ObservableObject
 
         _owner.OnDetailSettingsChanged();
         if (row.Definition.Key == SettingKeys.SizeMode) ShowValues();
-        else RefreshWarning();
+        else
+        {
+            RefreshWarning();
+            RefreshGroupChoices();
+        }
     }
 
     /// <summary>
@@ -349,8 +450,8 @@ public partial class DetailPanelViewModel : ObservableObject
     private void ChooseMode(string target, SettingDefinition choice, string mode)
     {
         var format = _owner.FormatValues(target);
-        // for every file of a format no choice means the slider; one file says so in so many
-        // words, because without a choice of its own it follows its format's
+        // for every file of a format no choice means the slider; for the files selected it means
+        // their format's way (see TidyModes)
         Store(target, choice, OnlyThisFile || mode != SizeModes.Slider ? mode : null);
         foreach (var definition in _definitions.Where(d => d.Mode != null))
         {
@@ -395,8 +496,9 @@ public partial class DetailPanelViewModel : ObservableObject
         }
         // …and the way of setting size and quality is the one its values belong to
         var mode = SettingCatalog.ModeOf(_definitions, value.Preset.Values);
-        if (mode != SizeModes.Slider && _definitions.FirstOrDefault(d => d.Key == SettingKeys.SizeMode) is { } choice)
+        if ((OnlyThisFile || mode != SizeModes.Slider) && _definitions.FirstOrDefault(d => d.Key == SettingKeys.SizeMode) is { } choice)
             Store(target, choice, mode);
+        TidyModes(target);
         _owner.OnDetailSettingsChanged();
         ShowValues();
     }
