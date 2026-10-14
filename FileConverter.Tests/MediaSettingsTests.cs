@@ -186,6 +186,23 @@ public class MediaSettingsTests(Samples samples) : IClassFixture<Samples>
         Assert.Equal("lossless copy", copy.Note);
     }
 
+    /// <summary>
+    /// A raw AAC file has no length written in it, and FFmpeg's guess from the bitrate of its first
+    /// frames is far off when it starts loud and goes on quietly (1.3 s for this one): the
+    /// length — for the progress bar, for a file size to aim at — is read from its packets.
+    /// </summary>
+    [Fact]
+    public async Task ARawAacFileIsAsLongAsItIs()
+    {
+        Samples.RequireFfmpeg();
+        using var folder = TestSetup.NewFolder();
+        var path = folder.File("loud-then-quiet.aac");
+        Samples.Ffmpeg(["-f", "lavfi", "-i", "anoisesrc=d=1:a=0.8:seed=1,apad=whole_dur=10", "-ac", "2",
+            "-c:a", "aac", "-b:a", "192k", path]);
+
+        Assert.Equal(10, (await ProbeAsync(path)).DurationSeconds, 0.1);
+    }
+
     [Fact]
     public async Task M4aAndOpusAreWrittenAndCopiedWhereTheyCanBe()
     {

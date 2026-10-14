@@ -3,6 +3,13 @@
 The part for a version is also what its page under
 [Releases](https://github.com/ZeronTwoi/MasterFileConverter/releases) says.
 
+## 2.7.1
+
+- **An .aac file is as long as it is.** A raw AAC file has no length written in it, and the
+  guess made from its first moments could be far off — 1.3 seconds for a ten-second file that
+  starts loud. Its true length is now read, so the progress bar is right for it, and a File size
+  asked of it is the size it gets rather than several times more.
+
 ## 2.7.0
 
 The files selected set to one format at once.

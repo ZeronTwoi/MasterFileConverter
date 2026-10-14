@@ -79,10 +79,12 @@ public static class FfmpegRunner
 
         using var doc = JsonDocument.Parse(json);
         double duration = 0, fileStart = 0;
+        string? container = null;
         if (doc.RootElement.TryGetProperty("format", out var format))
         {
             duration = ParseDouble(Str(format, "duration"));
             fileStart = ParseDouble(Str(format, "start_time"));
+            container = Str(format, "format_name");
         }
 
         VideoStream? video = null;
@@ -128,6 +130,12 @@ public static class FfmpegRunner
             }
         }
 
+        // A raw AAC file (ADTS) has no length written in it: ffprobe guesses one from the bitrate
+        // of its first frames, which is a third off, or 1.3 s for 10 s, when its start is louder
+        // than the rest. The times of its packets are exact.
+        if (container == "aac" && audio.Count > 0 && await LastPacketEndAsync(ffprobe, input, ct) is > 0 and var end)
+            duration = end;
+
         return new MediaInfo(duration, video != null, audio.Count > 0, video?.Width ?? 0, video?.Height ?? 0)
         {
             Video = video,
@@ -135,6 +143,31 @@ public static class FfmpegRunner
             Subtitles = subtitles,
             CoverArt = coverArt
         };
+    }
+
+    /// <summary>Where the last audio packet of a file ends, in seconds; 0 when that cannot be read.</summary>
+    private static async Task<double> LastPacketEndAsync(string ffprobe, string input, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = ffprobe,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (var arg in new[] { "-v", "quiet", "-select_streams", "a:0", "-show_entries", "packet=pts_time,duration_time",
+                     "-of", "csv=p=0", input })
+            psi.ArgumentList.Add(arg);
+
+        using var process = Process.Start(psi)!;
+        // a line for each packet, some 45 a second: read as they come, not held all at once
+        string? line, last = null;
+        while ((line = await process.StandardOutput.ReadLineAsync(ct)) != null)
+            if (line.Length > 0) last = line;
+        await process.WaitForExitAsync(ct);
+        if (process.ExitCode != 0 || last == null) return 0;
+        return last.Split(',').Sum(field => ParseDouble(field));
     }
 
     private static string? Str(JsonElement element, string name) =>
