@@ -391,8 +391,12 @@ public class CompressAndGroupTests(Samples samples) : IClassFixture<Samples>
         Assert.Equal((int)viewModel.SpeedInForce, chosen);
         Assert.EndsWith("(chosen for this PC)", viewModel.ResultText);
 
-        viewModel.ResultLevel = 0;                          // moved by hand: Auto is off, the speed is that one
+        // moved by hand — somewhere other than where it stands, which depends on the PC — Auto is off
+        int other = chosen == 0 ? 3 : 0;
+        viewModel.ResultLevel = other;
         Assert.False(viewModel.AutoSpeed);
+        Assert.Equal((SpeedPreset)other, viewModel.SpeedInForce);
+        viewModel.ResultLevel = 0;
         Assert.Equal(SpeedPreset.Fastest, viewModel.SpeedInForce);
         Assert.StartsWith("Done soonest", viewModel.ResultText);
         viewModel.ResultLevel = 3;
