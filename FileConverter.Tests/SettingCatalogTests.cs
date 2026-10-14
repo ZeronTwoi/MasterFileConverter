@@ -61,7 +61,7 @@ public class SettingCatalogTests
         Assert.Empty(Keys("zip", "tar"));
 
         // documents
-        Assert.Equal([K.PageSize, K.Margin], Keys("jpg", "pdf"));
+        Assert.Equal([K.SizeMode, K.SizePercent, K.PageSize, K.Margin], Keys("jpg", "pdf"));
         Assert.Equal([K.PageSize, K.Margin, K.FontSize], Keys("txt", "pdf"));
         Assert.Equal([K.Engine], Keys("docx", "pdf"));
         Assert.Empty(Keys("txt", "docx"));
@@ -153,11 +153,11 @@ public class SettingCatalogTests
         var choice = SettingCatalog.For("mov", "mp4").Single(d => d.Key == K.SizeMode);
         Assert.True(choice.InPanel);
         Assert.False(choice.OnCommandLine);
-        Assert.Equal([SizeModes.Slider, SizeModes.Quality, SizeModes.Bitrate, SizeModes.Size], choice.Choices.Select(c => c.Value));
-        Assert.Equal([SizeModes.Slider, SizeModes.Bitrate, SizeModes.Size],
+        Assert.Equal([SizeModes.Slider, SizeModes.Percent, SizeModes.Quality, SizeModes.Bitrate, SizeModes.Size], choice.Choices.Select(c => c.Value));
+        Assert.Equal([SizeModes.Slider, SizeModes.Percent, SizeModes.Bitrate, SizeModes.Size],
             SettingCatalog.For("mov", "avi").Single(d => d.Key == K.SizeMode).Choices.Select(c => c.Value));
         // pages of a PDF cannot be aimed at a size in kilobytes, so that is not offered for them
-        Assert.Equal([SizeModes.Slider, SizeModes.Quality],
+        Assert.Equal([SizeModes.Slider, SizeModes.Percent, SizeModes.Quality],
             SettingCatalog.For("pdf", "jpg").Single(d => d.Key == K.SizeMode).Choices.Select(c => c.Value));
         Assert.DoesNotContain(K.TargetSizeKb, Keys("pdf", "jpg"));
         // nothing to compress any other way: no choice

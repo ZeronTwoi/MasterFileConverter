@@ -18,9 +18,13 @@ namespace FileConverter.Core.Converters;
 /// </summary>
 public static class MergeConversion
 {
-    /// <summary>Can several sources with this target be combined into one output?</summary>
-    public static bool CanMerge(FileCategory sourceCategory, string targetExt)
+    /// <summary>
+    /// Can several sources with this target be combined into one output? Not a file set to its
+    /// own format (<paramref name="sourceExt"/>): that is only compressed, each file by itself.
+    /// </summary>
+    public static bool CanMerge(FileCategory sourceCategory, string targetExt, string? sourceExt = null)
     {
+        if (sourceExt != null && FormatRegistry.IsSameFormat(sourceExt, targetExt)) return false;
         var t = targetExt.ToLowerInvariant();
         // Archives always make sense combined — except archive→archive, which is a per-file repack.
         if (t is "zip" or "7z" or "tar" or "rar") return sourceCategory != FileCategory.Archive;

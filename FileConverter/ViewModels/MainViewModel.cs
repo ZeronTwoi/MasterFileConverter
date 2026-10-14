@@ -86,12 +86,39 @@ public partial class MainViewModel : ObservableObject
     private int _sizePercent = 100;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText))]
+    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText), nameof(ResultLevel), nameof(ResultText))]
     private int _speedIndex = 2;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText))]
+    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText), nameof(ResultLevel), nameof(ResultText))]
     private bool _autoSpeed;
+
+    /// <summary>
+    /// The Result slider: the speed in plain words, from 0 (done soonest) to 3 (the best result
+    /// for its size). It shows the speed in force — the one chosen for this PC while Auto is
+    /// on — and moving it chooses that speed by hand. Speed only ever trades time against how
+    /// small a file can be made at a given look, so it does not compete with the File size slider.
+    /// </summary>
+    public int ResultLevel
+    {
+        get => (int)SpeedInForce;
+        set
+        {
+            value = Math.Clamp(value, 0, SpeedOptions.Count - 1);
+            if (value == ResultLevel) return;
+            AutoSpeed = false;
+            SpeedIndex = value;
+        }
+    }
+
+    /// <summary>What the Result slider's position means, said under it.</summary>
+    public string ResultText => (ResultLevel switch
+    {
+        0 => "Done soonest, larger files",
+        1 => "Quick, slightly larger files",
+        2 => "Balanced",
+        _ => "Best for its size, takes longest"
+    }) + (AutoSpeed ? " (chosen for this PC)" : "");
 
     [ObservableProperty]
     private string? _customOutputDirectory;
@@ -639,14 +666,52 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedItemChanged(FileItemViewModel? value) => ShowDetail();
 
+    /// <summary>Every row selected in the list, in list order, as the list last said.</summary>
+    private IReadOnlyList<FileItemViewModel> _selection = [];
+
+    /// <summary>
+    /// The rows the panel is for: all those selected, or the one in <see cref="SelectedItem"/>
+    /// when that is set some other way than by selecting in the list.
+    /// </summary>
+    public IReadOnlyList<FileItemViewModel> SelectedItems =>
+        SelectedItem == null ? [] : _selection.Count > 1 && _selection.Contains(SelectedItem) ? _selection : [SelectedItem];
+
+    /// <summary>Called by the window whenever the list's selection changes.</summary>
+    public void SetSelection(IReadOnlyList<FileItemViewModel> items)
+    {
+        _selection = items;
+        ShowDetail();
+    }
+
     private void ShowDetail(bool force = false)
     {
         if (!DetailedSettingsOpen) return;
-        var item = SelectedItem;
-        var signature = item == null ? "" : $"{item.SourcePath}|{item.SelectedTarget}|{IsMerged(item)}";
+        var items = SelectedItems;
+        var signature = items.Count == 0
+            ? ""
+            : $"{IsMerged(items[0])}|" + string.Join("\n", items.Select(i => i.SourcePath + "|" + i.SelectedTarget));
         if (!force && signature == _detailSignature) return;
         _detailSignature = signature;
-        Detail.Show(item);
+        Detail.Show(items);
+    }
+
+    /// <summary>
+    /// Can these rows have their settings set together — are they converted the same way, into
+    /// the same format with the same settings to choose from? (mov → mp4 and mkv → mp4 are;
+    /// mov → mp4 and png → jpg are not, nor a photo → jpg and a PDF → jpg.)
+    /// </summary>
+    public bool ConvertTheSameWay(IReadOnlyList<FileItemViewModel> items)
+    {
+        if (items.Count == 0 || items[0].SelectedTarget is not { } target) return false;
+        var keysOf = new Dictionary<string, string>();
+        string Keys(FileItemViewModel item)
+        {
+            if (!keysOf.TryGetValue(item.Extension, out var keys))
+                keysOf[item.Extension] = keys = string.Join(",", SettingsOf(item.Extension, target, false).All.Select(d => d.Key));
+            return keys;
+        }
+        var first = Keys(items[0]);
+        return items.All(i => i.SelectedTarget == target && Keys(i) == first);
     }
 
     /// <summary>The saved settings of a target format, with this session's passwords for it.</summary>
@@ -680,15 +745,15 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Is this file about to be combined with others into one result?</summary>
     public bool IsMerged(FileItemViewModel item) =>
-        CombineFiles && item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target) &&
-        Items.Count(i => i.SelectedTarget == target && MergeConversion.CanMerge(i.Category, target)) >= 2;
+        CombineFiles && item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target, item.Extension) &&
+        Items.Count(i => i.SelectedTarget == target && MergeConversion.CanMerge(i.Category, target, i.Extension)) >= 2;
 
     /// <summary>How many files are heading for each target they could be combined into.</summary>
     private Dictionary<string, int> CombinableCounts()
     {
         var counts = new Dictionary<string, int>();
         foreach (var item in Items)
-            if (item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target))
+            if (item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target, item.Extension))
                 counts[target] = counts.GetValueOrDefault(target) + 1;
         return counts;
     }
@@ -744,23 +809,70 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Called by the panel after any change: refreshes the "custom" marks in the list.</summary>
     public void OnDetailSettingsChanged() => RefreshCustomMarks();
 
+    /// <summary>
+    /// Marks every row that converts with Format settings, and puts rows with exactly the same
+    /// settings into one numbered, coloured group — so several groups with settings of their own
+    /// can be told apart at a glance. Also says under the File size slider which files it does
+    /// not decide.
+    /// </summary>
     private void RefreshCustomMarks()
     {
         // counted once for the whole list, not once per row
         Dictionary<string, int>? combinable = null;
-        var ownSize = new SortedSet<string>(StringComparer.Ordinal);
+        var groups = new Dictionary<string, (int Number, string Tip)>(StringComparer.Ordinal);
+        var perTarget = new SortedDictionary<string, (int All, int Own)>(StringComparer.Ordinal);
         foreach (var item in Items)
         {
+            if (item.SelectedTarget is not { } target)
+            {
+                item.HasCustomSettings = false;
+                item.Group = 0;
+                continue;
+            }
             bool merged = false;
-            if (CombineFiles && item.SelectedTarget is { } target && MergeConversion.CanMerge(item.Category, target))
+            if (CombineFiles && MergeConversion.CanMerge(item.Category, target, item.Extension))
                 merged = (combinable ??= CombinableCounts()).GetValueOrDefault(target) >= 2;
             var effective = EffectiveSettings(item, merged);
+            var definitions = SettingsOf(item.Extension, target, merged).All;
             item.HasCustomSettings = !effective.IsEmpty;
-            if (!effective.IsEmpty &&
-                SettingCatalog.ReplacesSlider(SettingsOf(item.Extension, item.SelectedTarget!, merged).All, effective.Values))
-                ownSize.Add(item.SelectedTarget!.ToUpperInvariant());
+
+            var name = target.ToUpperInvariant();
+            var counts = perTarget.GetValueOrDefault(name);
+            bool own = !effective.IsEmpty && SettingCatalog.ReplacesSlider(definitions, effective.Values);
+            perTarget[name] = (counts.All + 1, counts.Own + (own ? 1 : 0));
+
+            if (effective.IsEmpty)
+            {
+                item.Group = 0;
+                continue;
+            }
+            var signature = target + "\n" + string.Join("\n", effective.Values.OrderBy(p => p.Key, StringComparer.Ordinal)
+                .Select(p => p.Key + "=" + p.Value));
+            if (!groups.TryGetValue(signature, out var group))
+                groups[signature] = group = (groups.Count + 1, DescribeGroup(groups.Count + 1, name, definitions, effective));
+            item.Group = group.Number;
+            item.GroupTip = group.Tip;
         }
-        SliderExceptionText = ownSize.Count == 0 ? null : $"Not for {string.Join(", ", ownSize)}: set in Format settings";
+
+        var exceptions = perTarget.Where(p => p.Value.Own > 0)
+            .Select(p => p.Value.Own == p.Value.All ? p.Key : $"{p.Value.Own} of {p.Value.All} {p.Key} files").ToList();
+        SliderExceptionText = exceptions.Count == 0 ? null : $"Not for {string.Join(", ", exceptions)}: set in Format settings";
+    }
+
+    /// <summary>"Group 2 → MP4: Set by: Own file size · File size (%): 50 · Maximum width (px): 1280", and what a group is.</summary>
+    private static string DescribeGroup(int number, string target, IReadOnlyList<SettingDefinition> definitions, DetailSettings settings)
+    {
+        var parts = settings.Values.OrderBy(p => definitions.ToList().FindIndex(d => d.Key == p.Key)).Select(p =>
+        {
+            var definition = definitions.FirstOrDefault(d => d.Key == p.Key);
+            if (definition == null) return p.Key;
+            if (definition.IsSecret) return $"{definition.Label}: set";
+            var shown = definition.Choices.FirstOrDefault(c => c.Value == p.Value)?.Label ?? p.Value;
+            return $"{definition.Label}: {shown}";
+        });
+        return $"Group {number} → {target}: {string.Join(" · ", parts)}\n\n" +
+               "Files of one colour convert with the same Format settings. Select them (Ctrl- or Shift-click) and open " +
+               "Format settings to change them together; give some of them settings of their own to start another group.";
     }
 
     // ---------- engines ----------
@@ -807,6 +919,8 @@ public partial class MainViewModel : ObservableObject
 
             _detected = PerformanceDetector.Detect(report.Faster ? report.Gpu : GpuEncoder.None);
             OnPropertyChanged(nameof(EffectiveSpeedText));
+            OnPropertyChanged(nameof(ResultLevel));
+            OnPropertyChanged(nameof(ResultText));
         }
         catch
         {
@@ -958,7 +1072,7 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Files sharing a combinable target (images → pdf/gif/tiff, anything → archive).</summary>
     private static List<(string Target, List<FileItemViewModel> Items)> ComputeMergeGroups(IEnumerable<FileItemViewModel> items) =>
-        items.Where(i => i.SelectedTarget != null && MergeConversion.CanMerge(i.Category, i.SelectedTarget!))
+        items.Where(i => i.SelectedTarget != null && MergeConversion.CanMerge(i.Category, i.SelectedTarget!, i.Extension))
              .GroupBy(i => i.SelectedTarget!)
              .Where(g => g.Count() >= 2)
              .Select(g => (g.Key, g.ToList()))
@@ -1167,9 +1281,12 @@ public partial class MainViewModel : ObservableObject
     private ConversionOptions OptionsFor(FileItemViewModel item, bool merging = false) => new ConversionOptions
     {
         SizePercent = SizePercent,
-        Speed = AutoSpeed ? _detected.Preset : (SpeedPreset)SpeedIndex,
+        Speed = SpeedInForce,
         UseGpu = UseGpu
     }.WithDetail(EffectiveSettings(item, merging));
+
+    /// <summary>The speed conversions run at: the one chosen for this PC while Auto is on, else the one picked.</summary>
+    public SpeedPreset SpeedInForce => AutoSpeed ? _detected.Preset : (SpeedPreset)Math.Clamp(SpeedIndex, 0, 3);
 
     [RelayCommand(CanExecute = nameof(CanConvert))]
     private async Task ConvertAllAsync()

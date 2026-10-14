@@ -12,6 +12,9 @@ public static class SettingKeys
     /// </summary>
     public const string SizeMode = "sizeMode";
 
+    /// <summary>A file's (or format's) own File size, 10–100 % of the original, in place of the slider's.</summary>
+    public const string SizePercent = "sizePercent";
+
     // pictures (and every picture a conversion writes: frames, PDF pages)
     public const string Quality = "quality";
     public const string Lossless = "lossless";

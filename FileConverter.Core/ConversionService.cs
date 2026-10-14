@@ -87,6 +87,28 @@ public sealed class ConversionService
     private async Task<ConversionResult> ConvertCoreAsync(string input, string output, ConversionOptions options,
         IProgress<double>? progress, CancellationToken ct)
     {
+        var result = await ConvertWithEngineAsync(input, output, options, progress, ct);
+        return KeepTheSmaller(input, result, options);
+    }
+
+    /// <summary>
+    /// A file set to its own format is there to be compressed. When nothing was asked of it but
+    /// that, and it came out no smaller — a JPEG saved again at top quality usually grows — the
+    /// result is the source as it was: never larger, and never a generation worse for nothing.
+    /// </summary>
+    private static ConversionResult KeepTheSmaller(string input, ConversionResult result, ConversionOptions options)
+    {
+        bool onlyCompressed = options.Detail.Values.Keys.All(key => key == Settings.SettingKeys.SizePercent);
+        if (!onlyCompressed || !FormatRegistry.IsSameFormat(FormatRegistry.GetExtension(input), FormatRegistry.GetExtension(result.OutputPath)) ||
+            !File.Exists(result.OutputPath) || new FileInfo(result.OutputPath).Length < new FileInfo(input).Length)
+            return result;
+        File.Copy(input, result.OutputPath, overwrite: true);
+        return result with { Note = "already as small as it gets — kept as it was" };
+    }
+
+    private async Task<ConversionResult> ConvertWithEngineAsync(string input, string output, ConversionOptions options,
+        IProgress<double>? progress, CancellationToken ct)
+    {
         var srcExt = FormatRegistry.GetExtension(input);
         var dstExt = FormatRegistry.GetExtension(output);
         var engine = FormatRegistry.GetEngine(srcExt, dstExt);

@@ -49,6 +49,8 @@ settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
 | PDF | pdf | docx, xlsx, pptx, odt, ods, odp, rtf, html, md, epub, txt, csv, png, jpg, tiff, svg |
 | Archives | zip, 7z, rar, tar, gz, bz2 | zip, 7z, tar (rar when WinRAR or `rar` is installed) |
 
+Pictures, sound, video and archives can also be set to their own format, just to be made smaller.
+
 ## What it does well
 
 - **Keeps the quality.** At 100 % nothing is thrown away that the target format can keep: video
@@ -61,9 +63,10 @@ settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
   Excel and PowerPoint or LibreOffice are installed, they lay the pages out exactly instead.
 - **Fast.** Every processor core is used, and the graphics card for video where that is
   actually quicker.
-- **Simple, precise when wanted.** One slider trades size for quality for all files. *Format
-  settings* give exact control for one format: resolution, codec, pages, password, and an exact
-  quality, bitrate or file size instead of the slider.
+- **Simple, precise when wanted.** One slider for file size and one for how much care each
+  file gets, for all files. *Format settings* give exact control for one format or for the files
+  you select: resolution, codec, pages, password, their own file size, quality or bitrate —
+  files with the same settings are shown as one coloured group.
 - **Offline, and nothing behind your back.** Your files never leave your computer. The app
   only goes online for what you agree to: fetching the engines, one look per start for a newer
   version if you say yes when it asks, and installing that version when you click. No account,

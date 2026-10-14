@@ -267,7 +267,7 @@ public class PagesAndDrawingsTests(Samples samples) : IClassFixture<Samples>
         Assert.DoesNotContain("svg", FormatRegistry.GetTargets("png", false));
 
         static List<string> Keys(string source, string target) => SettingCatalog.For(source, target).Select(d => d.Key).ToList();
-        Assert.Equal(K.Dpi, Keys("svg", "png")[0]);
+        Assert.Equal([K.SizeMode, K.SizePercent, K.Dpi], Keys("svg", "png")[..3]); // size first, as everywhere, then its resolution
         Assert.DoesNotContain(K.Scale, Keys("svg", "png"));    // its size is its resolution
         Assert.DoesNotContain(K.Metadata, Keys("svg", "jpg")); // a drawing carries no camera data
         Assert.Equal([K.PageSize, K.Margin], Keys("svg", "pdf"));

@@ -13,6 +13,7 @@
             </ResourceDictionary.MergedDictionaries>
 
             <local:CategoryToBrushConverter x:Key="CategoryToBrush" />
+            <local:GroupToBrushConverter x:Key="GroupToBrush" />
         </ResourceDictionary>
     </Application.Resources>
 

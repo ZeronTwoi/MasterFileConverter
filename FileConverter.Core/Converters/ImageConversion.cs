@@ -80,6 +80,12 @@ public static class ImageConversion
         {
             exact = ConvertAnimated(input, output, src, dst, targetBytes, options, progress, ct);
         }
+        else if (paged && dst == "tiff")
+        {
+            // a TIFF of several pages into a TIFF again: its pages stay together, each compressed anew
+            MergeConversion.ConvertManyAsync([input], output, options, progress, ct).GetAwaiter().GetResult();
+            return new ConversionResult(output);
+        }
         else if (animated || paged)
         {
             // animated source → still format: every frame becomes a numbered image; so does every page of a TIFF

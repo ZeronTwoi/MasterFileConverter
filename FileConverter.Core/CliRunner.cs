@@ -180,7 +180,7 @@ public static class CliRunner
         }
 
         bool mergeAll = inputs.Count > 1 && !each && inputs.All(i =>
-            Converters.MergeConversion.CanMerge(FormatRegistry.GetCategory(FormatRegistry.GetExtension(i)), targetExt));
+            Converters.MergeConversion.CanMerge(FormatRegistry.GetCategory(FormatRegistry.GetExtension(i)), targetExt, FormatRegistry.GetExtension(i)));
 
         // --set values are checked against what each conversion understands before anything runs.
         // In a mixed batch a setting only some of the files know (a resolution for the PDFs among

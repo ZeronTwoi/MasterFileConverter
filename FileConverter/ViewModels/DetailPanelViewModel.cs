@@ -81,7 +81,9 @@ public partial class ChoiceSettingRow : SettingRowViewModel
     {
         _showing = true;
         if (!Definition.ChoiceRequired) Options[0] = new SettingChoice("", automaticText);
-        Selected = Options.FirstOrDefault(o => o.Value == (value ?? "")) ?? Options[0];
+        // a choice that is always made shows none while the files shown have different ones
+        Selected = Options.FirstOrDefault(o => o.Value == (value ?? "")) ??
+                   (Definition.ChoiceRequired && value == null ? null : Options[0]);
         _showing = false;
     }
 
@@ -101,15 +103,19 @@ public sealed record PresetChoice(SettingsPreset Preset, bool IsBuiltIn)
 }
 
 /// <summary>
-/// The Format settings panel: the precise settings of the selected file's conversion.
+/// The Format settings panel: the precise settings of the selected files' conversion.
 /// They are kept per target format ("everything I turn into MP4") and can be overridden for
-/// one file. Whatever is left empty stays automatic. What the bar at the bottom sets for all
-/// files — speed, where results go — is not here; size and quality are set in one of the two
-/// places, and the panel's "Set by" choice says which.
+/// the files selected — one, or several converted the same way, which then share them. Whatever
+/// is left empty stays automatic. What the bar at the bottom sets for all files — speed, where
+/// results go — is not here; size and quality are set in one of the two places, and the panel's
+/// "Set by" choice says which.
 /// </summary>
 public partial class DetailPanelViewModel : ObservableObject
 {
     private readonly MainViewModel _owner;
+    /// <summary>The files the panel is for; their settings of their own are set all alike.</summary>
+    private IReadOnlyList<FileItemViewModel> _items = [];
+    /// <summary>The first of them, which stands for all in what is the same for each (the target, the settings offered).</summary>
     private FileItemViewModel? _item;
     private IReadOnlyList<SettingDefinition> _definitions = [];
     private bool _rebuilding;
@@ -171,13 +177,15 @@ public partial class DetailPanelViewModel : ObservableObject
         if (!_rebuilding) ShowValues();
     }
 
-    /// <summary>Rebuilds the panel for a file (or for none).</summary>
-    public void Show(FileItemViewModel? item)
+    /// <summary>Rebuilds the panel for the files selected (or for none).</summary>
+    public void Show(IReadOnlyList<FileItemViewModel> items)
     {
         _rebuilding = true;
         try
         {
-            _item = item;
+            _items = items;
+            _item = items.Count > 0 ? items[0] : null;
+            var item = _item;
             Groups.Clear();
             Presets.Clear();
             SelectedPreset = null;
@@ -195,13 +203,29 @@ public partial class DetailPanelViewModel : ObservableObject
                 return;
             }
 
+            if (items.Count > 1 && !_owner.ConvertTheSameWay(items))
+            {
+                // settings are set together only where they are the same settings
+                _items = [];
+                _item = null;
+                HasContext = true;
+                HasSettings = false;
+                Title = "Format settings";
+                Subtitle = $"{items.Count} files selected";
+                var ways = items.Select(i => $"{i.Extension.ToUpperInvariant()} → {i.SelectedTarget?.ToUpperInvariant() ?? "nothing"}")
+                    .Distinct().Take(4);
+                EmptyText = $"These files are converted in different ways ({string.Join(", ", ways)}). Select files that become " +
+                            "the same format in the same way — with Ctrl or Shift — to set them together.";
+                return;
+            }
+
             HasContext = true;
             Title = $"{target.ToUpperInvariant()} settings";
-            Subtitle = $"{item.FileName}  →  {target}";
+            Subtitle = items.Count == 1 ? $"{item.FileName}  →  {target}" : $"{items.Count} files  →  {target}";
             ScopeAllText = $"Every file converted to {target.ToUpperInvariant()}";
-            ScopeFileText = "Only this file";
-            // a file that already has settings of its own opens on them
-            OnlyThisFile = item.Overrides.Count > 0;
+            ScopeFileText = items.Count == 1 ? "Only this file" : $"Only these {items.Count} files";
+            // files that already have settings of their own open on them
+            OnlyThisFile = items.Any(i => i.Overrides.Count > 0);
 
             _definitions = SettingCatalog.For(item.Extension, target, _owner.IsMerged(item));
             HasSettings = _definitions.Any(d => d.InPanel);
@@ -242,8 +266,12 @@ public partial class DetailPanelViewModel : ObservableObject
     {
         if (_item?.SelectedTarget is not { } target) return;
         var format = _owner.FormatValues(target);
-        // the way size and quality are set: a file without one of its own follows its format's
-        var mode = SettingCatalog.ModeOf(_definitions, OnlyThisFile ? DetailSettings.Merge(format, _item.Overrides).Values : format);
+        // the way size and quality are set: a file without one of its own follows its format's —
+        // and files selected together that have different ones show none until one is picked for all
+        var modes = OnlyThisFile
+            ? _items.Select(i => SettingCatalog.ModeOf(_definitions, DetailSettings.Merge(format, i.Overrides).Values)).Distinct().ToList()
+            : [SettingCatalog.ModeOf(_definitions, format)];
+        string? mode = modes.Count == 1 ? modes[0] : null;
         foreach (var row in Groups.SelectMany(g => g.Rows))
         {
             var key = row.Definition.Key;
@@ -254,12 +282,16 @@ public partial class DetailPanelViewModel : ObservableObject
             }
             else if (OnlyThisFile)
             {
-                // an empty box means "as for all files of this format", and says what that is
-                _item.Overrides.TryGetValue(key, out var own);
-                string inherited = format.TryGetValue(key, out var shared)
-                    ? $"{Display(row.Definition, shared)} (as for all {target.ToUpperInvariant()})"
-                    : row.Definition.Automatic;
-                row.Show(own, row.Definition.IsSecret && shared != null ? "As for all files" : inherited);
+                // an empty box means "as for all files of this format", and says what that is —
+                // or, for several files whose own values differ, that they do
+                var owns = _items.Select(i => i.Overrides.GetValueOrDefault(key)).Distinct().ToList();
+                string? own = owns.Count == 1 ? owns[0] : null;
+                string inherited = owns.Count > 1
+                    ? $"Not the same in all {_items.Count}"
+                    : format.TryGetValue(key, out var shared)
+                        ? row.Definition.IsSecret ? "As for all files" : $"{Display(row.Definition, shared)} (as for all {target.ToUpperInvariant()})"
+                        : row.Definition.Automatic;
+                row.Show(own, inherited);
             }
             else
             {
@@ -273,18 +305,23 @@ public partial class DetailPanelViewModel : ObservableObject
     private static string Display(SettingDefinition definition, string value) =>
         definition.Choices.FirstOrDefault(c => c.Value == value)?.Label ?? value;
 
-    /// <summary>Sets (or, with null, clears) one setting in the scope being edited.</summary>
+    /// <summary>Sets (or, with null, clears) one setting in the scope being edited — for each of the files, if it is theirs.</summary>
     private void Store(string target, SettingDefinition definition, string? value)
     {
         if (OnlyThisFile)
         {
-            if (value == null) _item!.Overrides.Remove(definition.Key);
-            else _item!.Overrides[definition.Key] = value;
+            foreach (var item in _items) Store(item, definition, value);
         }
         else
         {
             _owner.SetFormatValue(target, definition, value);
         }
+    }
+
+    private static void Store(FileItemViewModel item, SettingDefinition definition, string? value)
+    {
+        if (value == null) item.Overrides.Remove(definition.Key);
+        else item.Overrides[definition.Key] = value;
     }
 
     private void OnRowChanged(SettingRowViewModel row, string? value)
@@ -321,10 +358,11 @@ public partial class DetailPanelViewModel : ObservableObject
             {
                 Store(target, definition, null);
             }
-            else if (definition.Suggested != null && !format.ContainsKey(definition.Key) &&
-                     !(OnlyThisFile && _item!.Overrides.ContainsKey(definition.Key)))
+            else if (definition.Suggested != null && !format.ContainsKey(definition.Key))
             {
-                Store(target, definition, definition.Suggested);
+                if (!OnlyThisFile) Store(target, definition, definition.Suggested);
+                else foreach (var item in _items.Where(i => !i.Overrides.ContainsKey(definition.Key)))
+                    Store(item, definition, definition.Suggested);
             }
         }
     }

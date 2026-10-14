@@ -153,7 +153,9 @@
                                Text="images · audio · video · documents · archives — then pick a target format for each file" />
                 </StackPanel>
 
-                <ListBox x:Name="FileList" Classes="files" ItemsSource="{Binding Items}"
+                <!-- several rows at once: Shift-click for a range, Ctrl-click to add or take away one,
+                     and either held down while dragging over rows (see MainWindow.axaml.cs) -->
+                <ListBox x:Name="FileList" Classes="files" ItemsSource="{Binding Items}" SelectionMode="Multiple"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          SelectedItem="{Binding SelectedItem}" IsVisible="{Binding HasItems}">
                     <ListBox.ItemTemplate>
@@ -181,16 +183,31 @@
                                     <TextBlock Text="{Binding FileName}" FontSize="13.5" FontWeight="Medium"
                                                TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourcePath}" />
                                     <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
-                                        <TextBlock Classes="dim" Text="{Binding SizeText}" FontSize="11.5" />
-                                        <TextBlock Text="  ·  custom format settings" FontSize="11.5"
-                                                   Foreground="{DynamicResource AccentBrush}"
-                                                   IsVisible="{Binding HasCustomSettings}"
-                                                   ToolTip.Tip="This file converts with settings from the Format settings panel." />
+                                        <TextBlock Classes="dim" Text="{Binding SizeText}" FontSize="11.5" VerticalAlignment="Center" />
+                                        <!-- its settings group: one colour for every file with the same Format settings -->
+                                        <Border Margin="8,0,0,0" CornerRadius="4" Padding="6,0" VerticalAlignment="Center"
+                                                Background="{Binding Group, Converter={StaticResource GroupToBrush}}"
+                                                IsVisible="{Binding HasCustomSettings}" ToolTip.Tip="{Binding GroupTip}"
+                                                AutomationProperties.Name="{Binding GroupTip}">
+                                            <TextBlock Text="{Binding GroupText}" FontSize="10.5" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource ChipTextBrush}" />
+                                        </Border>
                                     </StackPanel>
                                 </StackPanel>
 
-                                <TextBlock Grid.Column="2" Classes="dim" Text="→" FontSize="15" VerticalAlignment="Center"
-                                           Margin="2,0,10,0" />
+                                <!-- → for a conversion; (!) for a file set to its own format, which is only compressed -->
+                                <Panel Grid.Column="2" Width="30" Margin="0,0,4,0" VerticalAlignment="Center">
+                                    <TextBlock Classes="dim" Text="→" FontSize="15" HorizontalAlignment="Center"
+                                               IsVisible="{Binding !IsSameFormat}" />
+                                    <Border Width="19" Height="19" CornerRadius="10" BorderThickness="1.5"
+                                            BorderBrush="{DynamicResource WarnBrush}" Background="Transparent"
+                                            HorizontalAlignment="Center" IsVisible="{Binding IsSameFormat}"
+                                            AutomationProperties.Name="Same format: only compressed"
+                                            ToolTip.Tip="Same format as the file: it is not converted into anything else, only compressed. What changes is what the File size setting and its Format settings ask for — quality, file size, resolution and the like. If it cannot be made smaller, it is kept as it was.">
+                                        <TextBlock Text="!" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource WarnBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </Panel>
 
                                 <!-- target format -->
                                 <ComboBox Grid.Column="3" Width="96" ItemsSource="{Binding TargetOptions}"
@@ -307,7 +324,8 @@
                                                         <TextBlock Text="{Binding Label}" TextWrapping="Wrap" VerticalAlignment="Center"
                                                                    Margin="0,0,10,0" />
                                                         <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
-                                                                  ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}">
+                                                                  ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
+                                                                  PlaceholderText="Not the same for all">
                                                             <ComboBox.ItemTemplate>
                                                                 <DataTemplate x:DataType="settings:SettingChoice">
                                                                     <TextBlock Text="{Binding Label}" />
@@ -382,24 +400,50 @@
                                IsVisible="{Binding SliderExceptionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
 
-                <!-- speed -->
+                <!-- result: the speed in plain words; the speed itself, Auto and the graphics card folded away below -->
                 <StackPanel Grid.Column="1" Margin="0,0,24,0">
-                    <TextBlock Classes="label" Text="Speed" />
-                    <!-- one line when there is room, two when the window is narrow -->
-                    <WrapPanel Margin="0,7,0,0">
-                        <ComboBox Width="126" Margin="0,0,12,0"
-                                  ItemsSource="{Binding SpeedOptions}" SelectedIndex="{Binding SpeedIndex}"
-                                  IsEnabled="{Binding !AutoSpeed}"
-                                  ToolTip.Tip="Faster = quicker conversion and slightly larger files. At 100% size the quality is the same on every setting." />
-                        <CheckBox Content="Auto" Margin="0,0,12,0" Height="32" IsChecked="{Binding AutoSpeed}"
-                                  ToolTip.Tip="Pick the speed that suits this PC's processor and graphics card. Nothing leaves the machine." />
-                        <CheckBox Content="Use GPU" Height="32" IsChecked="{Binding UseGpu}" IsEnabled="{Binding GpuAvailable}"
-                                  ToolTip.ShowOnDisabled="True"
-                                  ToolTip.Tip="Encode video on the graphics card whenever that is clearly faster than this PC's processor (measured once, see the status bar). At 100% this only makes files a little larger, not worse. &quot;Best quality&quot; always uses the CPU encoder, which compresses hardest." />
-                    </WrapPanel>
-                    <TextBlock Classes="hint" Text="{Binding EffectiveSpeedText}" Margin="0,6,0,0"
-                               TextTrimming="CharacterEllipsis" IsVisible="{Binding AutoSpeed}"
-                               ToolTip.Tip="{Binding EffectiveSpeedText}" />
+                    <StackPanel ToolTip.Tip="How much care goes into each file. To the right takes longer and gives the best result for its size: a smaller file that looks the same, or — below 100% File size — a better look at the same size. To the left is done sooner, with files a little larger. At 100% File size no position makes a file look worse.">
+                        <TextBlock Classes="label" Text="Result" />
+                        <Slider Minimum="0" Maximum="3" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding ResultLevel}" Margin="0,-1,0,-7"
+                                AutomationProperties.Name="Result: from quick to best" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="hint" Text="{Binding ResultText}" TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding ResultText}" />
+                            <TextBlock Grid.Column="1" Classes="hint" Text="Quick ← → Best" Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- for those who want the engines' own terms: closed until asked for -->
+                    <ToggleButton x:Name="SpeedDetails" Classes="fold" Margin="-6,4,0,0" Padding="6,2" Height="24"
+                                  HorizontalAlignment="Left" Background="Transparent" BorderThickness="0"
+                                  ToolTip.Tip="The speed setting behind the Result slider, choosing it for this PC, and the graphics card.">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Panel Width="8" Height="8" VerticalAlignment="Center">
+                                <Path Data="M 2,0 L 6,4 L 2,8" Stroke="{DynamicResource TextDimBrush}" StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" IsVisible="{Binding !#SpeedDetails.IsChecked}" />
+                                <Path Data="M 0,2 L 4,6 L 8,2" Stroke="{DynamicResource TextDimBrush}" StrokeThickness="1.4"
+                                      StrokeLineCap="Round" StrokeJoin="Round" IsVisible="{Binding #SpeedDetails.IsChecked}" />
+                            </Panel>
+                            <TextBlock Classes="hint" Text="Speed details" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <StackPanel IsVisible="{Binding #SpeedDetails.IsChecked}" Margin="0,4,0,0">
+                        <!-- one line when there is room, two when the window is narrow -->
+                        <WrapPanel>
+                            <ComboBox Width="126" Margin="0,0,12,0"
+                                      ItemsSource="{Binding SpeedOptions}" SelectedIndex="{Binding ResultLevel}"
+                                      ToolTip.Tip="The Result slider under the names the encoders use. Faster = quicker conversion and slightly larger files. At 100% size the quality is the same on every setting." />
+                            <CheckBox Content="Auto" Margin="0,0,12,0" Height="32" IsChecked="{Binding AutoSpeed}"
+                                      ToolTip.Tip="Pick the speed that suits this PC's processor and graphics card. Nothing leaves the machine. Moving the Result slider picks one by hand instead." />
+                            <CheckBox Content="Use GPU" Height="32" IsChecked="{Binding UseGpu}" IsEnabled="{Binding GpuAvailable}"
+                                      ToolTip.ShowOnDisabled="True"
+                                      ToolTip.Tip="Encode video on the graphics card whenever that is clearly faster than this PC's processor (measured once, see the status bar). At 100% this only makes files a little larger, not worse. &quot;Best quality&quot; always uses the CPU encoder, which compresses hardest." />
+                        </WrapPanel>
+                        <TextBlock Classes="hint" Text="{Binding EffectiveSpeedText}" Margin="0,4,0,0"
+                                   TextTrimming="CharacterEllipsis" IsVisible="{Binding AutoSpeed}"
+                                   ToolTip.Tip="{Binding EffectiveSpeedText}" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- where results go -->

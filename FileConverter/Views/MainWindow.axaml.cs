@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using FileConverter.ViewModels;
 
 namespace FileConverter.Views;
@@ -13,6 +15,14 @@ public partial class MainWindow : Window, IAppHost
         InitializeComponent();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
+
+        // the list selects on its own; these follow what it did, and add dragging with Shift or Ctrl
+        FileList.SelectionChanged += (_, _) => ViewModel?.SetSelection(
+            FileList.Selection.SelectedIndexes.Order().Select(i => FileList.Items[i]).OfType<FileItemViewModel>().ToList());
+        FileList.AddHandler(PointerPressedEvent, OnRowPressed, RoutingStrategies.Bubble, handledEventsToo: true);
+        FileList.AddHandler(PointerMovedEvent, OnRowDragged, RoutingStrategies.Bubble, handledEventsToo: true);
+        FileList.AddHandler(PointerReleasedEvent, (_, _) => _dragKeys = KeyModifiers.None, RoutingStrategies.Bubble,
+            handledEventsToo: true);
         ConfirmStop = () => ConfirmDialog.AskAsync(this,
             "Files are still being converted",
             "Closing now stops them. What is finished stays; a file that is not finished yet is not kept.",
@@ -94,6 +104,72 @@ public partial class MainWindow : Window, IAppHost
         {
             _asking = false;
         }
+    }
+
+    // ---------- selecting several rows by dragging ----------
+    //
+    // Shift or Ctrl held while the left button goes down on a row, then moved over others with
+    // the button still down: Shift selects from where the selection started to the row under
+    // the pointer, as a Shift-click there would; Ctrl does to every row passed over what the
+    // Ctrl-click did to the first — selects it, or takes it away again.
+
+    private KeyModifiers _dragKeys;
+    private bool _dragSelects;
+    private int _dragIndex = -1;
+
+    private void OnRowPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _dragKeys = KeyModifiers.None;
+        if (!e.GetCurrentPoint(FileList).Properties.IsLeftButtonPressed) return;
+        _dragKeys = e.KeyModifiers & (KeyModifiers.Shift | KeyModifiers.Control);
+        _dragIndex = RowAt(e.GetPosition(FileList));
+        // the list has already answered the click: whether this row is selected now says what Ctrl-dragging does
+        _dragSelects = _dragIndex >= 0 && FileList.Selection.IsSelected(_dragIndex);
+    }
+
+    private void OnRowDragged(object? sender, PointerEventArgs e)
+    {
+        if (_dragKeys == KeyModifiers.None) return;
+        if (!e.GetCurrentPoint(FileList).Properties.IsLeftButtonPressed)
+        {
+            _dragKeys = KeyModifiers.None;
+            return;
+        }
+        int index = RowAt(e.GetPosition(FileList));
+        if (index < 0 || index == _dragIndex) return;
+        _dragIndex = index;
+
+        var selection = FileList.Selection;
+        selection.BeginBatchUpdate();
+        try
+        {
+            if (_dragKeys.HasFlag(KeyModifiers.Shift))
+            {
+                int anchor = selection.AnchorIndex >= 0 ? selection.AnchorIndex : index;
+                selection.Clear();
+                selection.SelectRange(Math.Min(anchor, index), Math.Max(anchor, index));
+                selection.AnchorIndex = anchor;
+            }
+            else if (_dragSelects)
+            {
+                selection.Select(index);
+            }
+            else
+            {
+                selection.Deselect(index);
+            }
+        }
+        finally
+        {
+            selection.EndBatchUpdate();
+        }
+    }
+
+    /// <summary>The index of the row under a point of the list, or -1.</summary>
+    private int RowAt(Avalonia.Point point)
+    {
+        var row = (FileList.InputHitTest(point) as Avalonia.Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true);
+        return row == null ? -1 : FileList.IndexFromContainer(row);
     }
 
     // ---------- drag and drop ----------

@@ -26,11 +26,15 @@ public static class SizeModes
     public const string Lossless = "lossless";
     public const string Level = "level";
 
+    /// <summary>Its own File size, a share of the original like the slider's, for this file or format alone.</summary>
+    public const string Percent = "percent";
+
     /// <summary>
     /// Which one a set of values saved without a choice means: the setting that took precedence
-    /// in the converters before there was one (2.5.0 and older, and the command line).
+    /// in the converters before there was one (2.5.0 and older, and the command line). An own
+    /// File size is only a slider position, so anything more precise goes before it.
     /// </summary>
-    internal static readonly string[] Precedence = [Size, Bitrate, Quality, Lossless, Level];
+    internal static readonly string[] Precedence = [Size, Bitrate, Quality, Lossless, Level, Percent];
 }
 
 /// <summary>One precise setting as the Format settings panel shows it.</summary>
@@ -198,7 +202,51 @@ public static class SettingCatalog
         {
             DocumentEngine(list);
         }
+
+        if (SliderApplies(source, sourceExtension, target)) OwnFileSize(list);
         return list;
+    }
+
+    /// <summary>
+    /// Does the File size slider change this conversion's result? It does for pictures, video
+    /// and compressed sound; not for documents, lossless sound or drawings kept as drawings —
+    /// and for archives it only picks how hard to compress, which their own level does better.
+    /// </summary>
+    private static bool SliderApplies(FileCategory source, string sourceExtension, string target) => target switch
+    {
+        _ when ImageTargets.Contains(target) || target == "gif" || VideoTargets.Contains(target) => true,
+        "mp3" or "aac" or "m4a" or "ogg" or "opus" => true,
+        "pdf" => source == FileCategory.Image && sourceExtension != "svg",
+        _ => false
+    };
+
+    /// <summary>
+    /// A File size of its own for a format or a file: one more way of setting size and quality,
+    /// right after the slider it stands in for — on a conversion that had no choice yet, the
+    /// choice is made for it.
+    /// </summary>
+    private static void OwnFileSize(List<SettingDefinition> list)
+    {
+        int at = list.FindIndex(d => d.Key == K.SizeMode);
+        if (at < 0)
+        {
+            list.Insert(0, SizeMode(SetBy, SizeAndQuality, SliderDecides,
+                "How small the result is made. The File size slider decides for every file; give this format, or the files " +
+                "selected, a file size of their own and the slider leaves them alone."));
+            at = 0;
+        }
+        var choice = list[at];
+        list[at] = choice with
+        {
+            Choices = [choice.Choices[0], new SettingChoice(SizeModes.Percent, "Own file size"), .. choice.Choices.Skip(1)]
+        };
+        list.Insert(at + 1, new(K.SizePercent, "File size (%)", SettingKind.Number)
+        {
+            Group = choice.Group, Min = 10, Max = 100, Mode = SizeModes.Percent, Suggested = "50", Automatic = "10 to 100",
+            OnCommandLine = false, // --size is the command line's file size
+            Help = "The share of the original size to aim for, like the File size slider at the bottom — which then leaves " +
+                   "these files alone. 100 keeps the best quality the format allows." + EmptyMeansSlider
+        });
     }
 
     /// <summary>

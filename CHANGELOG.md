@@ -3,6 +3,28 @@
 The part for a version is also what its page under
 [Releases](https://github.com/ZeronTwoi/MasterFileConverter/releases) says.
 
+## 2.6.0
+
+Compress a file in its own format, set several files at once, and a plainer speed setting.
+
+- **The same format, only compressed.** A picture, sound, video, zip, 7z or rar can be set to
+  its own format — a JPEG to JPEG — just to be made smaller by the File size slider or its format
+  settings. A (!) in the row says so. The source is never replaced, and a file that cannot be
+  made any smaller is kept exactly as it was rather than saved again larger.
+- **A file size of its own.** In Format settings, *Set by: Own file size* gives a format, or the
+  files selected, their own File size; the slider at the bottom then leaves them alone and says
+  so ("Not for 2 of 5 JPG files").
+- **Several files at once.** Shift-click selects a range, Ctrl-click adds a file or takes it away,
+  and holding Shift or Ctrl while dragging over the list does the same to every row passed over.
+  Files converted the same way are then set together in Format settings.
+- **Groups in colour.** Files with exactly the same format settings carry the same coloured
+  *Group* tag, whose tooltip lists their settings — so one group can be made small for e-mail
+  and another kept large, side by side.
+- **Result instead of Speed, Auto and Use GPU.** One slider from *Quick* to *Best* says in plain
+  words what the speed setting does; Speed, Auto and Use GPU are folded away under *Speed
+  details* for those who want them.
+- A TIFF of several pages set to TIFF stays one file with all its pages.
+
 ## 2.5.1
 
 Clearer settings: two places with names that say what they are for, and nothing that can be set

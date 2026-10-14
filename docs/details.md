@@ -188,31 +188,55 @@ Below 100 % the size slider takes over and trades quality for a target size.
 Settings live in two places, and nothing can be set in both:
 
 - **Settings for all files** — the bar at the bottom — are used for every file in the list,
-  whatever its format: the **File size** slider (how small the results are made), **Speed**,
-  whether the graphics card may encode video, where results are saved, and what happens when a
-  result's name is taken.
+  whatever its format: the **File size** slider (how small the results are made), the
+  **Result** slider (how much care goes into each file), where results are saved, and what
+  happens when a result's name is taken.
 - **Format settings** — the button at the top — open a panel beside the file list with what only
   the selected file's target format has: a resolution, a video or audio format, pages, a paper
   size, a password and so on. It is off by default; with it off, and for anything left empty,
   the app decides exactly as described above.
 
 Size and quality are the one thing the two could both decide, so in the panel they are a choice:
-**Set by** the *File size slider* (the default), or for this format alone a *fixed quality*, a
-*fixed bitrate* or an *exact file size* (for WebP also *lossless*; for archives a *fixed
-level*). Only the box for the way chosen is shown, so a quality, a bitrate and a size never
-compete, and choosing one clears the others. Under the slider the bar says which formats in the
-list it does not decide ("Not for MP4: set in Format settings").
+**Set by** the *File size slider* (the default), or for this format — or the files selected —
+alone an *own file size* (a percentage, like the slider's), a *fixed quality*, a *fixed bitrate*
+or an *exact file size* (for WebP also *lossless*; for archives a *fixed level*). Only the box
+for the way chosen is shown, so they never compete, and choosing one clears the others. Under
+the slider the bar says which files it does not decide ("Not for MP4, 2 of 5 JPG files: set in
+Format settings").
+
+**The Result slider** is the speed setting in plain words: from *Quick* (done soonest, files a
+little larger) to *Best* (the best result for its size, takes longest). At 100 % File size no
+position makes a file look worse — speed only trades time against how small a file can be made
+at the same look; below 100 % the slower end also looks better at the same size. *Speed
+details*, folded away under it, hold the same choice under the encoders' names (Fastest, Fast,
+Balanced, Best quality), **Auto** (choose it for this PC — moving the slider chooses by hand
+instead) and **Use GPU**.
 
 - **What can be set depends on both ends of the conversion.** PDF → JPG has a resolution and a
   page list, video → JPG a frame rate, photo → JPG neither.
 - **Settings belong to the target format** — "everything I turn into MP4" — and are saved
-  automatically. **One file can differ**: switch the panel to *Only this file*; whatever is left
-  empty there follows the format.
+  automatically. **Some files can differ**: switch the panel to *Only this file* (or *Only these
+  files*); whatever is left empty there follows the format.
+- **Several files at once.** Shift-click selects a range of rows, Ctrl-click adds a row or takes
+  it away again, and either key held while dragging over rows with the left button down does
+  the same to every row passed over. Files converted the same way (mov → mp4 and mkv → mp4, say)
+  are then set together; a value they do not share shows as "Not the same in all".
+- **Groups.** Files that convert with exactly the same format settings carry the same coloured
+  *Group* tag in the list; its tooltip says what the group's settings are. Give some files
+  settings of their own and they become another group, in another colour.
 - **Presets** fill in a whole set at once ("Fit in 10 MB", "Web · 1920 px", "Podcast · mono
   64 kbps" …), and the current settings can be saved as a preset of your own.
 - **Honest about lossless.** When a setting means the video or audio is encoded again instead of
   copied, the panel says so.
-- Rows that convert with format settings are marked in the list.
+
+**The same format, only compressed.** A picture (JPG, PNG, GIF, WebP, BMP, TIFF), a sound, a
+video, a zip, a 7z or a rar (where WinRAR is installed) can be set to its own format: it is then
+not converted, only made smaller by the File size slider or its format settings. Such a row
+shows a (!) instead of the arrow. A file set to its own format is never combined with others;
+its result gets a name of its own (`photo (1).jpg`), so the source is never replaced; and when
+nothing but its size was asked for and it cannot be made smaller — a JPEG saved again at top
+quality usually grows — it is kept exactly as it was. (PDFs and documents cannot: there is no
+PDF rewriter here, and a document has nothing to compress.)
 
 | Result | Settings |
 |---|---|
@@ -261,9 +285,9 @@ panel has no second control for them; a script can still set them (`--set compre
   NVIDIA card is being skipped because its driver is too old for FFmpeg.
 - **Archives:** `.7z` sources are unpacked by 7-Zip itself (a solid archive that took
   minutes through the managed reader takes about a second).
-- **Speed presets** — Fastest / Fast / Balanced / Best quality — choose encoder presets
-  (x264 `superfast`…`slow`, VP9 realtime/good, zlib level, webp effort, 7z `-mx` …). At
-  100 % they change encode time and file size, not quality.
+- **Speed presets** — Fastest / Fast / Balanced / Best quality, the four positions of the
+  Result slider — choose encoder presets (x264 `superfast`…`slow`, VP9 realtime/good, zlib
+  level, webp effort, 7z `-mx` …). At 100 % they change encode time and file size, not quality.
 - **Auto** picks a preset from the local hardware (cores, RAM, GPU encoder).
   Nothing leaves the machine.
 - **Start-up:** the window is up in under 0.4 s. The whole program is compiled to machine code

@@ -28,10 +28,11 @@ public sealed record ConversionOptions
     /// </summary>
     public DetailSettings Detail { get; init; } = DetailSettings.None;
 
-    /// <summary>These options with a file's precise settings applied (one of which may be its own speed).</summary>
+    /// <summary>These options with a file's precise settings applied (among them may be its own file size and speed).</summary>
     public ConversionOptions WithDetail(DetailSettings detail) => this with
     {
         Detail = detail,
+        SizePercent = detail.Int(SettingKeys.SizePercent, 10, 100) ?? SizePercent,
         Speed = detail.Text(SettingKeys.Speed) switch
         {
             "fastest" => SpeedPreset.Fastest,

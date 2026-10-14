@@ -136,8 +136,27 @@ public static class FormatRegistry
             if (!targets.Contains("7z")) targets.Add("7z");
         }
 
+        // and last, its own format: not converted, only compressed (never the one a new file is set to)
+        if (CanCompressAsItIs(ext, rarOutputAvailable) && !targets.Contains(ext)) targets.Add(ext);
+
         return targets;
     }
+
+    /// <summary>
+    /// Can a file of this type be written as the same type again, smaller — a JPEG at a lower
+    /// quality, a video at a lower bitrate, a zip compressed harder? Not a PDF (there is no PDF
+    /// rewriter here), not a document (nothing to compress), not a tar (it never compresses).
+    /// </summary>
+    public static bool CanCompressAsItIs(string ext, bool rarOutputAvailable)
+    {
+        ext = Canonical(ext.ToLowerInvariant());
+        return ImageOutputs.Contains(ext) || AudioOutputs.Contains(ext) || VideoOutputs.Contains(ext) ||
+               ext is "zip" or "7z" || (ext == "rar" && rarOutputAvailable);
+    }
+
+    /// <summary>Is the target the source's own format (jpg → jpeg counts) — a file that is only compressed?</summary>
+    public static bool IsSameFormat(string sourceExt, string targetExt) =>
+        Canonical(sourceExt.ToLowerInvariant()) == Canonical(targetExt.ToLowerInvariant());
 
     private static IEnumerable<string> DocumentTargets(string ext)
     {

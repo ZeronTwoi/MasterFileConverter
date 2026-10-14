@@ -166,7 +166,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
 
         // at first the slider decides, and none of the ways' settings is shown — nor a second speed
         Assert.Equal(SizeModes.Slider, Choice(viewModel, K.SizeMode).Selected!.Value);
-        Assert.Equal(4, Choice(viewModel, K.SizeMode).Options.Count); // no separate "automatic" entry
+        Assert.Equal(5, Choice(viewModel, K.SizeMode).Options.Count); // slider, own size, quality, bitrate, size — no separate "automatic" entry
         Assert.DoesNotContain(K.Crf, ShownKeys(viewModel));
         Assert.DoesNotContain(K.VideoBitrate, ShownKeys(viewModel));
         Assert.DoesNotContain(K.TargetSizeMb, ShownKeys(viewModel));

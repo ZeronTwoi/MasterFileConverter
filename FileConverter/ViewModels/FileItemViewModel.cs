@@ -25,7 +25,11 @@ public partial class FileItemViewModel : ObservableObject
     public IReadOnlyList<string> TargetOptions { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSameFormat))]
     private string? _selectedTarget;
+
+    /// <summary>Set to its own format: not converted into anything else, only compressed.</summary>
+    public bool IsSameFormat => SelectedTarget != null && FormatRegistry.IsSameFormat(Extension, SelectedTarget);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDone), nameof(IsFailed), nameof(IsConverting), nameof(HasResult), nameof(NeedsConversion))]
@@ -44,9 +48,23 @@ public partial class FileItemViewModel : ObservableObject
     /// <summary>Precise settings set for this file alone; they sit on top of its target format's settings.</summary>
     public Dictionary<string, string> Overrides { get; } = [];
 
-    /// <summary>Shown as a small "custom" chip: this file converts with settings from the Format settings panel.</summary>
+    /// <summary>This file converts with settings from the Format settings panel.</summary>
     [ObservableProperty]
     private bool _hasCustomSettings;
+
+    /// <summary>
+    /// Its settings group, 1 and up — every file that converts with exactly the same Format
+    /// settings has the same number and colour — or 0 for a file with none.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupText))]
+    private int _group;
+
+    /// <summary>What the group's files share, said where the group's mark is pointed at.</summary>
+    [ObservableProperty]
+    private string _groupTip = "";
+
+    public string GroupText => $"Group {Group}";
 
     public bool IsDone => State == ItemState.Done;
     public bool IsFailed => State == ItemState.Failed;
@@ -68,7 +86,9 @@ public partial class FileItemViewModel : ObservableObject
         SizeBytes = size;
         SizeText = FormatSize(SizeBytes);
         TargetOptions = FormatRegistry.GetTargets(Extension, rarAvailable);
-        SelectedTarget = preferredTarget != null && TargetOptions.Contains(preferredTarget)
+        // a file is only ever set to its own format by hand: compressing is a choice, not a default
+        SelectedTarget = preferredTarget != null && TargetOptions.Contains(preferredTarget) &&
+                         !FormatRegistry.IsSameFormat(Extension, preferredTarget)
             ? preferredTarget
             : TargetOptions.FirstOrDefault();
     }
