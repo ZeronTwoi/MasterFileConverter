@@ -68,15 +68,15 @@ and `7zz`/`7z` are used when they are there.
 
 | Category  | Inputs                                              | Outputs                                   |
 |-----------|-----------------------------------------------------|-------------------------------------------|
-| Images    | jpg/jpeg, png, gif, webp, bmp, tif/tiff, heic, ico, svg | jpg, png, gif, webp, bmp, tiff, pdf    |
-| Audio     | mp3, wav, flac, aac, ogg, m4a, wma, opus            | mp3, wav, flac, aac, m4a, ogg, opus        |
-| Video     | mp4, mkv, avi, webm, mov, wmv, flv, ts, m4v         | mp4, mkv, avi, webm, mov + audio extract + gif + png/jpg frames |
-| Text documents | docx, doc, odt, rtf, html/htm, md, epub, txt, log | pdf, docx, odt, rtf, html, md, epub, txt, doc + png/jpg pages |
-| Spreadsheets | xlsx, xls, ods, csv                              | pdf, xlsx, ods, csv, html + png/jpg pages  |
-| Presentations | pptx, ppt, odp                                  | pdf, pptx, odp + png/jpg slides            |
-| PDF       | pdf                                                 | docx, doc, odt, rtf, html, md, epub, txt · xlsx, ods, csv · pptx, odp · png, jpg, tiff, svg |
+| Images    | jpg/jpeg/jfif, png/apng, gif, webp, avif, jxl, bmp, tif/tiff, heic/heif, ico, svg, tga, psd, dds, hdr, exr | jpg, png, gif, webp, avif, jxl, bmp, tiff, ico, tga, pdf |
+| Audio     | mp3, wav, aiff, flac, aac, ogg, m4a/m4b, wma, opus, ac3, eac3, mka | mp3, wav, aiff, flac, aac, m4a, ogg, opus, ac3 |
+| Video     | mp4, mkv, avi, webm, mov, wmv, flv, ts/mts/m2ts, m4v, mpg/vob, 3gp, ogv | mp4, mkv, avi, webm, mov + audio extract + gif + png/jpg frames |
+| Text documents | docx, doc, docm, dotx, odt, rtf, html/htm, md, epub, txt, log | pdf, docx, odt, rtf, html, md, epub, txt, doc + png/jpg pages |
+| Spreadsheets | xlsx, xls, xlsm, ods, csv, tsv                  | pdf, xlsx, ods, csv, tsv, html + png/jpg pages |
+| Presentations | pptx, ppt, ppsx, potx, pptm, odp                | pdf, pptx, odp + png/jpg slides            |
+| PDF       | pdf                                                 | docx, doc, odt, rtf, html, md, epub, txt · xlsx, ods, csv, tsv · pptx, odp · png, jpg, tiff, svg |
 | Drawings (through LibreOffice) | odg, pub                       | pdf + png/jpg pages                        |
-| Archives  | zip, 7z, rar, tar, gz/tgz, bz2                      | zip, 7z, tar (+ rar when the RAR encoder is installed) |
+| Archives  | zip, 7z, rar, tar, gz/tgz, bz2, xz/txz              | zip, 7z, tar (+ rar when the RAR encoder is installed) |
 
 Animated GIFs stay animated (gif ↔ webp, gif ↔ mp4/mkv/webm), and any file can be
 packed into a zip/7z. The old binary Office formats — .doc, .xls, .ppt — are read; of the three
@@ -140,7 +140,8 @@ for everything else wherever no office program is there:
 
 ## Quality: what 100 % means
 
-At the 100 % slider position nothing is thrown away that the target format can keep:
+At the Result slider's *Full quality* and *Best* positions (100 %) nothing is thrown away that
+the target format can keep:
 
 - **Video is copied, not re-encoded, whenever the target container can hold it.**
   mp4 ↔ mkv ↔ mov (H.264/HEVC), webm → mkv, and so on are re-wrapped bit-for-bit — instant
@@ -181,36 +182,43 @@ At the 100 % slider position nothing is thrown away that the target format can k
 - **Text files** are read in their real encoding (UTF-8, UTF-16, or the legacy code page that
   goes with the system's language, such as Windows-1254), so accented letters survive.
 
-Below 100 % the size slider takes over and trades quality for a target size.
+At the slider's lower positions, quality is traded for a target size.
 
 ## Settings for all files, and Format settings
 
 Settings live in two places, and nothing can be set in both:
 
 - **Settings for all files** — the bar at the bottom — are used for every file in the list,
-  whatever its format: the **File size** slider (how small the results are made), the
-  **Result** slider (how much care goes into each file), where results are saved, and what
-  happens when a result's name is taken.
+  whatever its format: the **Result** slider (how small the results are made and how much care
+  goes into them), where results are saved, and what happens when a result's name is taken.
 - **Format settings** — the button at the top — open a panel beside the file list with what only
   the selected file's target format has: a resolution, a video or audio format, pages, a paper
   size, a password and so on. It is off by default; with it off, and for anything left empty,
   the app decides exactly as described above.
 
 Size and quality are the one thing the two could both decide, so in the panel they are a choice:
-**Set by** the *File size slider* (the default), or for this format — or the files selected —
+**Set by** the *Result slider* (the default), or for this format — or the files selected —
 alone an *own file size* (a percentage, like the slider's), a *fixed quality*, a *fixed bitrate*
 or an *exact file size* (for WebP also *lossless*; for archives a *fixed level*). Only the box
 for the way chosen is shown, so they never compete, and choosing one clears the others. Under
 the slider the bar says which files it does not decide ("Not for MP4, 2 of 5 JPG files: set in
 Format settings").
 
-**The Result slider** is the speed setting in plain words: from *Quick* (done soonest, files a
-little larger) to *Best* (the best result for its size, takes longest). At 100 % File size no
-position makes a file look worse — speed only trades time against how small a file can be made
-at the same look; below 100 % the slower end also looks better at the same size. *Speed
-details*, folded away under it, hold the same choice under the encoders' names (Fastest, Fast,
-Balanced, Best quality), **Auto** (choose it for this PC — moving the slider chooses by hand
-instead) and **Use GPU**.
+**The Result slider** decides size and speed together:
+
+| Position | Size aimed for | Speed |
+|---|---|---|
+| Smallest | about 25 % of the source | Fast |
+| Small | about 50 % | Fast |
+| Good | about 75 % | Balanced |
+| Full quality (where it starts) | 100 % — nothing thrown away that the format can keep | Balanced |
+| Best | 100 %, and the smallest file at that quality | Best quality (slowest; never the graphics card) |
+
+The small end is Fast rather than Fastest because the fastest encoders miss a size target by
+more, and look worst where few bits are left. *Speed details*, folded away under it, hold
+**Auto speed** (choose the speed for this PC and leave only the size to the slider — moving the
+slider chooses by hand again) and **Use GPU**. Settings keep the position as its size and speed,
+so what an earlier version saved with two sliders lands on the nearest position.
 
 - **What can be set depends on both ends of the conversion.** PDF → JPG has a resolution and a
   page list, video → JPG a frame rate, photo → JPG neither.
@@ -239,7 +247,7 @@ instead) and **Use GPU**.
 
 **The same format, only compressed.** A picture (JPG, PNG, GIF, WebP, BMP, TIFF), a sound, a
 video, a zip, a 7z or a rar (where WinRAR is installed) can be set to its own format: it is then
-not converted, only made smaller by the File size slider or its format settings. Such a row
+not converted, only made smaller by the Result slider or its format settings. Such a row
 shows a (!) instead of the arrow. A file set to its own format is never combined with others;
 its result gets a name of its own (`photo (1).jpg`), so the source is never replaced; and when
 nothing but its size was asked for and it cannot be made smaller — a JPEG saved again at top
@@ -264,9 +272,9 @@ PDF rewriter here, and a document has nothing to compress.)
 | PDF → TIFF / SVG | pages (· resolution and compression for TIFF) |
 | Archives | compression: Speed and the slider, or a fixed level 0–9 · password (AES-256; kept for the session, never saved) · solid 7z |
 
-How hard PNG and FLAC compress, and how fast video is encoded, are Speed's to decide, so the
-panel has no second control for them; a script can still set them (`--set compression=…`,
-`--set speed=…`).
+How hard PNG and FLAC compress, and how fast video is encoded, are the Result slider's to
+decide, so the panel has no second control for them; a script can still set them
+(`--set compression=…`, `--set speed=…`).
 
 ## Speed
 
@@ -293,8 +301,8 @@ panel has no second control for them; a script can still set them (`--set compre
   NVIDIA card is being skipped because its driver is too old for FFmpeg.
 - **Archives:** `.7z` sources are unpacked by 7-Zip itself (a solid archive that took
   minutes through the managed reader takes about a second).
-- **Speed presets** — Fastest / Fast / Balanced / Best quality, the four positions of the
-  Result slider — choose encoder presets (x264 `superfast`…`slow`, VP9 realtime/good, zlib
+- **Speed presets** — Fastest / Fast / Balanced / Best quality, set by the Result slider or
+  `--speed` — choose encoder presets (x264 `superfast`…`slow`, VP9 realtime/good, zlib
   level, webp effort, 7z `-mx` …). At 100 % they change encode time and file size, not quality.
 - **Auto** picks a preset from the local hardware (cores, RAM, GPU encoder).
   Nothing leaves the machine.
@@ -362,8 +370,8 @@ some of them can become says how many ("pdf (2 of 3)"), and the others keep thei
 
 ## Everyday features
 
-- **Everything is remembered:** file size, speed, GPU, output folder, the panel's settings and
-  presets, the window size, and the target last chosen for each kind of source file.
+- **Everything is remembered:** the Result slider, GPU, border colour, output folder, the panel's
+  settings and presets, the window size, and the target last chosen for each kind of source file.
 - **Files and folders** can be dropped anywhere on the window or added with the buttons; a
   folder is added with everything inside it. Files passed on the command line ("Open with")
   are added at start.
@@ -371,11 +379,14 @@ some of them can become says how many ("pdf (2 of 3)"), and the others keep thei
   failed or cancelled conversion), or skip.
 - Finished rows offer **Open** and **Show in folder**. **Convert all** works through what has
   no result yet, then turns into **Retry failed** or **Convert again**.
-- **File size slider** — target output size as a % of the original. Drives bitrate
-  targeting for audio/video (two-pass encoding on slower speed presets), a search for the
+- **Result slider, below full quality** — target output size as a % of the original. Drives
+  bitrate targeting for audio/video (two-pass encoding on slower speed presets), a search for the
   highest quality that fits for images, and compression levels for archives.
-- Dark by default; the ··· menu at the bottom right switches to a light theme or to following
-  the system, and opens the settings folder, the licences and the app's page with its source.
+- **Dark, with thin lines** in the colour chosen under *Border colour* in the ··· menu at the
+  bottom right (white, green, amber, cyan, blue, purple or red). The type is the system's own
+  monospaced one: Cascadia Mono or Consolas on Windows, DejaVu Sans Mono or similar on Linux. The
+  same menu copies the setup for an AI agent and opens the settings folder, the licences and the
+  app's page with its source.
 - **New versions, if you want to hear of them.** The first start asks once whether the app
   should tell you when a new version is out. With *No* it never asks again and never connects
   by itself. With *Yes* it looks once at each start, and a newer version shows as a warning sign
@@ -469,14 +480,21 @@ terminal waits for.
 ```text
 masterfileconverter <input> [<input2> …] <target-ext> [options]
     --out <dir>            write results to this folder (default: next to each source)
-    --size <10-100>        target size as a percentage of the source (100 = best quality)
-    --speed fastest|fast|balanced|best
+    --result smallest|small|good|full|best   as the window's Result slider (default: full)
+    --size <10-100>        an exact target size as a percentage of the source, instead of the result's
+    --speed fastest|fast|balanced|best       an encoder speed, instead of the result's
     --set <key>=<value>    a precise setting, e.g. --set quality=85 --set maxWidth=1920 (repeatable)
     --when-exists keep|replace|skip
     --each                 convert every input separately instead of combining them
     --no-gpu               keep video encoding on the CPU
+    --dry-run              check everything and say what would be written, without writing
+    --json                 stdout is one JSON document: every result's path, size and status
 
-masterfileconverter --list-settings <source-ext> <target-ext>   the settings --set accepts
+masterfileconverter --list-formats [<source-ext>] [--json]      what can be read and what it can become
+masterfileconverter --list-settings <source-ext> <target-ext> [--json]   the settings --set accepts
+masterfileconverter --status [--json]                           the version, and which engines are here
+masterfileconverter --mcp                                       run as a tool server for AI agents
+masterfileconverter --agent-setup                               what an MCP client needs to start it
 masterfileconverter --setup-tools                               download FFmpeg and 7-Zip
 masterfileconverter --self-test [--filter <text>] [--keep] [--engine <name>]
                                                                 check every conversion on this machine
@@ -487,7 +505,9 @@ masterfileconverter --uninstall [--keep-settings]               remove the insta
 (`MasterFileConverter.exe --cli …` works too, but being a windowed program it does not make the
 terminal wait.) Several inputs with a combinable target (images → pdf/gif/tiff, anything → an
 archive) merge into **one** output; pass `--each` to convert them separately.
-Exit codes: `0` success, `1` conversion error, `2` bad arguments.
+Exit codes: `0` success, `1` conversion error, `2` bad arguments, `3` an engine it needs is not
+installed. For agents and scripts — the MCP tools, the JSON, the error codes — see
+[Using the app from an AI agent or a script](agents.md).
 
 **`--self-test`** makes a small sample of every input format, converts it to every target the
 app offers and inspects each result (an image must decode, a video must keep its tracks and
@@ -509,7 +529,7 @@ build\publish.ps1                                    # the downloads and the ins
 
 | Project | What it is |
 |---|---|
-| `FileConverter.Core` | the conversion engines, settings and command line — no UI, nothing system-specific |
+| `FileConverter.Core` | the conversion engines, settings, command line and MCP server — no UI, nothing system-specific |
 | `FileConverter.Platform.Windows` | Word, Excel and PowerPoint automation, registry, Explorer's sort order, Windows engine downloads |
 | `FileConverter.Platform.Linux` | XDG folders, `/sys` and `/proc` probing, the desktop's file manager, Linux engine downloads |
 | `FileConverter` | the Avalonia window (and `--cli`); references exactly one platform project |
@@ -563,6 +583,13 @@ says which file is for which system, what is new (that version's part of `CHANGE
 files' SHA-256 checksums.
 
 ## What has been checked
+
+Version 2.8.0 gave the window its plain dark look and put the agent interface in. On Windows 11:
+the window's looks were checked in renders of the real window at its normal and smallest sizes,
+with the panel open and in another colour, and the menu with its colours; the MCP server by its
+tests (a client's conversation, every error code) and by a real client process talking to the
+published download. Not checked: the look on a Linux desktop, where the type is whichever
+monospaced font the system has, and any particular agent product's MCP client.
 
 Version 2.5.0 added documents, spreadsheets, presentations and drawings: some forty formats on
 one side or the other, each into the others. (It made the downloads 5 to 7 MB larger.)
@@ -698,7 +725,8 @@ Both downloads of version 2.1.0, built from the same source:
 | Building the download | `build\publish.ps1`, both systems' downloads | `build/publish.sh`, the Linux download |
 
 The Linux download's window on an X server, engines downloaded by the app and LibreOffice found
-(the settings panel is open because it was open in version 2.0, whose settings were taken over):
+(version 2.1's look; the settings panel is open because it was open in version 2.0, whose settings
+were taken over):
 
 ![The window on Linux](screenshots/linux.png)
 

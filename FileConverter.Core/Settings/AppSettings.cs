@@ -39,8 +39,8 @@ public sealed class AppSettings
     /// <summary>The target last chosen for each source type, offered again next time ("png" → "webp").</summary>
     public Dictionary<string, string> LastTargets { get; set; } = [];
 
-    /// <summary>"dark", "light" or "system".</summary>
-    public string Theme { get; set; } = "dark";
+    /// <summary>The colour of the window's lines and accents: one of <see cref="LineColours"/>.</summary>
+    public string LineColour { get; set; } = LineColours.Default;
 
     /// <summary>
     /// Look once at each start whether a newer version is out? Nothing as long as the user has not
@@ -51,6 +51,20 @@ public sealed class AppSettings
     public double WindowWidth { get; set; }
     public double WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
+}
+
+/// <summary>The colours the window's lines and accents can be given, in the ··· menu.</summary>
+public static class LineColours
+{
+    public const string Default = "white";
+
+    public static IReadOnlyList<(string Id, string Hex)> All { get; } =
+    [
+        ("white", "#FFFFFF"), ("green", "#5FF287"), ("amber", "#FFB000"), ("cyan", "#56D8E8"),
+        ("blue", "#6FA8FF"), ("purple", "#C792EA"), ("red", "#FF6E6E")
+    ];
+
+    public static string Hex(string id) => All.FirstOrDefault(c => c.Id == id).Hex ?? All[0].Hex;
 }
 
 /// <summary>A named bundle of precise settings for one kind of target ("Fit in 10 MB" for video).</summary>
@@ -122,7 +136,7 @@ public sealed class SettingsStore
         settings.SizePercent = Math.Clamp(settings.SizePercent, 10, 100);
         if (!Enum.IsDefined(settings.Speed)) settings.Speed = SpeedPreset.Balanced;
         if (!Enum.IsDefined(settings.WhenFileExists)) settings.WhenFileExists = ExistingFileAction.KeepBoth;
-        if (settings.Theme is not ("dark" or "light" or "system")) settings.Theme = "dark";
+        if (!LineColours.All.Any(c => c.Id == settings.LineColour)) settings.LineColour = LineColours.Default;
         settings.FormatSettings ??= [];
         settings.Presets ??= [];
         settings.LastTargets ??= [];

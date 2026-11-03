@@ -142,31 +142,95 @@ public class WindowTests
     }
 
     [AvaloniaFact]
-    public async Task TheLightThemeRecoloursTheWholeWindow()
+    public async Task TheBorderColourRecoloursTheWholeWindowAndIsRemembered()
     {
         using var folder = TestSetup.NewFolder();
-        var viewModel = NewViewModel(folder);
+        var store = new SettingsStore(folder.File("settings.json"));
+        var viewModel = new MainViewModel(store, findEngines: false);
         var app = (App)Avalonia.Application.Current!;
+        Avalonia.Media.Color Line() =>
+            app.Resources.TryGetResource("LineBrush", Avalonia.Styling.ThemeVariant.Dark, out var found)
+                ? ((Avalonia.Media.SolidColorBrush)found!).Color
+                : default;
         try
         {
             var window = Show(viewModel, width: 1180, height: 720);
-            viewModel.SetThemeCommand.Execute("light");
-            Assert.True(viewModel.IsLightTheme);
-            Assert.Equal("light", viewModel.Settings.Theme); // and it is remembered
+            Assert.Equal("white", viewModel.LineColour);
             await viewModel.AddPathsAsync(SampleFiles(folder, "holiday.jpg", "trailer.mkv", "report.docx"));
             viewModel.Items[1].SelectedTarget = "mp4";
+            viewModel.SelectedItem = viewModel.Items[1];
             viewModel.DetailedSettingsOpen = true;
             viewModel.Items[2].State = ItemState.Failed;
             viewModel.Items[2].StatusText = "Converting legacy .doc files requires Microsoft Word or LibreOffice.";
 
-            Assert.Equal(Avalonia.Styling.ThemeVariant.Light, window.ActualThemeVariant);
-            Capture(window, "07-light");
+            viewModel.SetLineColourCommand.Execute("amber");
+            Assert.Equal(Avalonia.Media.Color.Parse(LineColours.Hex("amber")), Line());
+            Capture(window, "07-amber");
+
+            viewModel.SetLineColourCommand.Execute("no such colour");   // nothing changes
+            Assert.Equal("amber", viewModel.LineColour);
+
+            viewModel.Flush();
+            Assert.Equal("amber", new MainViewModel(store, findEngines: false).LineColour);
             window.Close();
         }
         finally
         {
-            app.ApplyTheme("dark");
+            app.ApplyLineColour(LineColours.Default);
         }
+    }
+
+    /// <summary>The menu offers exactly the colours there are, each in its own colour, and choosing one works.</summary>
+    [AvaloniaFact]
+    public void TheMenuOffersTheBorderColours()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var app = (App)Avalonia.Application.Current!;
+        var window = Show(viewModel);
+        try
+        {
+            var button = window.FindControl<Button>("MenuButton")!;
+            var flyout = (MenuFlyout)button.Flyout!;
+            flyout.ShowAt(button);
+            Dispatcher.UIThread.RunJobs();
+
+            var colours = flyout.Items.OfType<MenuItem>().Single(item => item.Header as string == "Border colour");
+            colours.IsSubMenuOpen = true;
+            Dispatcher.UIThread.RunJobs();
+            var items = colours.Items.OfType<MenuItem>().ToList();
+            Assert.Equal(LineColours.All.Select(c => c.Id), items.Select(item => (string)item.CommandParameter!));
+            Assert.Equal(LineColours.All.Select(c => Avalonia.Media.Color.Parse(c.Hex)),
+                items.Select(item => ((Avalonia.Media.ISolidColorBrush)((TextBlock)item.Header!).Foreground!).Color));
+            Assert.True(items[0].IsChecked); // white, to begin with
+
+            Directory.CreateDirectory(ScreenshotDir);
+            if (TopLevel.GetTopLevel(colours) is { } menu)
+                menu.CaptureRenderedFrame()?.Save(Path.Combine(ScreenshotDir, "14-menu.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            if (TopLevel.GetTopLevel(items[0]) is { } submenu)
+                submenu.CaptureRenderedFrame()?.Save(Path.Combine(ScreenshotDir, "15-colours.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+
+            items[2].Command!.Execute(items[2].CommandParameter);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("amber", viewModel.LineColour);
+            Assert.True(items[2].IsChecked);
+            Assert.False(items[0].IsChecked);
+            flyout.Hide();
+        }
+        finally
+        {
+            app.ApplyLineColour(LineColours.Default);
+            window.Close();
+        }
+    }
+
+    /// <summary>A settings file from before the colours, with a theme and a colour nobody offers, starts white.</summary>
+    [Fact]
+    public void AnOldOrWrongColourStartsWhite()
+    {
+        using var folder = TestSetup.NewFolder();
+        File.WriteAllText(folder.File("settings.json"), """{ "theme": "light", "lineColour": "tartan" }""");
+        Assert.Equal("white", new SettingsStore(folder.File("settings.json")).Load().LineColour);
     }
 
     [AvaloniaFact]
@@ -176,8 +240,7 @@ public class WindowTests
         var store = new SettingsStore(folder.File("settings.json"));
 
         var first = new MainViewModel(store, findEngines: false);
-        first.SizePercent = 60;
-        first.SpeedIndex = 0;
+        first.ResultLevel = 1;
         first.UseGpu = false;
         first.ExistingFileIndex = (int)ExistingFileAction.Overwrite;
         first.CustomOutputDirectory = folder.Path;
@@ -186,8 +249,8 @@ public class WindowTests
         first.Flush();
 
         var second = new MainViewModel(store, findEngines: false);
-        Assert.Equal(60, second.SizePercent);
-        Assert.Equal(0, second.SpeedIndex);
+        Assert.Equal(1, second.ResultLevel);
+        Assert.Equal(50, second.SizePercent);
         Assert.False(second.UseGpu);
         Assert.Equal((int)ExistingFileAction.Overwrite, second.ExistingFileIndex);
         Assert.Equal(folder.Path, second.CustomOutputDirectory);

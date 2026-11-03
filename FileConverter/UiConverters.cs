@@ -1,14 +1,11 @@
 using System.Globalization;
-using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Data.Converters;
-using FileConverter.Core;
 
 namespace FileConverter;
 
 /// <summary>
 /// The colour of a settings group (1, 2, 3 …): files given the same settings of their own share
-/// one. Eight colours that read on dark and light alike; a ninth group starts them again, its
+/// one. Eight colours that read on the dark background; a ninth group starts them again, its
 /// number telling it apart.
 /// </summary>
 public sealed class GroupToBrushConverter : IValueConverter
@@ -25,22 +22,11 @@ public sealed class GroupToBrushConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-/// <summary>The chip colour of a file's category. Chip colours are the same in every theme.</summary>
-public sealed class CategoryToBrushConverter : IValueConverter
+/// <summary>Is the value the one named by the parameter? (Which colour in the menu carries the mark.)</summary>
+public sealed class IsEqualConverter : IValueConverter
 {
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        var key = value switch
-        {
-            FileCategory.Image => "CatImageBrush",
-            FileCategory.Audio => "CatAudioBrush",
-            FileCategory.Video => "CatVideoBrush",
-            FileCategory.Document => "CatDocumentBrush",
-            FileCategory.Archive => "CatArchiveBrush",
-            _ => "CatOtherBrush"
-        };
-        return Application.Current!.TryFindResource(key, out var brush) ? brush : null;
-    }
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        Equals(value?.ToString(), parameter?.ToString());
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

@@ -1,10 +1,13 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using FileConverter.Core;
 using FileConverter.Core.Platform;
+using FileConverter.Core.Settings;
 using FileConverter.ViewModels;
 using FileConverter.Views;
 
@@ -19,7 +22,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var viewModel = new MainViewModel();
-            ApplyTheme(viewModel.Settings.Theme);
+            ApplyLineColour(viewModel.Settings.LineColour);
 
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
@@ -76,11 +79,32 @@ public partial class App : Application
         }
     }
 
-    /// <summary>"dark", "light", or "system" to follow the desktop's setting.</summary>
-    public void ApplyTheme(string theme) => RequestedThemeVariant = theme switch
+    /// <summary>
+    /// Colours the window's lines and accents. The brushes are changed in place, so everything that
+    /// uses them — the Fluent controls' borrowed ones too — follows at once.
+    /// </summary>
+    public void ApplyLineColour(string id)
     {
-        "light" => ThemeVariant.Light,
-        "system" => ThemeVariant.Default,
-        _ => ThemeVariant.Dark
-    };
+        var colour = Color.Parse(LineColours.Hex(id));
+        Color Darker(double share) => Color.FromRgb((byte)(colour.R * share), (byte)(colour.G * share), (byte)(colour.B * share));
+        Color Faint(byte alpha) => Color.FromArgb(alpha, colour.R, colour.G, colour.B);
+
+        Set("LineBrush", colour);
+        Set("LineDimBrush", Faint(0x66));
+        Set("AccentBrush", colour);
+        Set("AccentHoverBrush", Darker(0.85));
+        Set("AccentPressedBrush", Darker(0.7));
+        Set("SelectionBrush", Faint(0x26));
+
+        // what is left to the Fluent theme's own accent: the focus of a menu's or a list's mark
+        foreach (var style in Styles.OfType<FluentTheme>())
+            if (style.Palettes.TryGetValue(ThemeVariant.Dark, out var palette))
+                palette.Accent = colour;
+    }
+
+    private void Set(string key, Color colour)
+    {
+        if (Resources.TryGetResource(key, ThemeVariant.Dark, out var found) && found is SolidColorBrush brush)
+            brush.Color = colour;
+    }
 }

@@ -44,6 +44,51 @@ public sealed record ConversionOptions
     };
 }
 
+/// <summary>One position of the Result slider: how small the result is made and how fast it is encoded.</summary>
+/// <param name="Name">What the command line and agents call it.</param>
+/// <param name="SizePercent">The target size, as a share of the source; 100 keeps the best quality the format allows.</param>
+/// <param name="Speed">How much time the encoders take over it.</param>
+/// <param name="Text">What it means, said under the slider.</param>
+public sealed record ResultLevel(string Name, int SizePercent, SpeedPreset Speed, string Text);
+
+/// <summary>
+/// The Result slider, the one control for how far a result is taken: from small and quick to
+/// everything kept and the most care. The small end is Fast, not Fastest: the fastest encoders
+/// miss a size target by more and look worst exactly where few bits are left.
+/// </summary>
+public static class ResultLevels
+{
+    public static IReadOnlyList<ResultLevel> All { get; } =
+    [
+        new("smallest", 25, SpeedPreset.Fast, "About 25% of the size, quick"),
+        new("small", 50, SpeedPreset.Fast, "About 50% of the size, quick"),
+        new("good", 75, SpeedPreset.Balanced, "About 75% of the size"),
+        new("full", 100, SpeedPreset.Balanced, "Full quality"),
+        new("best", 100, SpeedPreset.BestQuality, "Full quality, smallest, slowest")
+    ];
+
+    /// <summary>Where the slider starts: nothing lost, in reasonable time.</summary>
+    public const int Default = 3;
+
+    /// <summary>The level of this name or position, or null.</summary>
+    public static ResultLevel? Find(string nameOrPosition) =>
+        int.TryParse(nameOrPosition, out var position)
+            ? position >= 0 && position < All.Count ? All[position] : null
+            : All.FirstOrDefault(level => level.Name.Equals(nameOrPosition, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The position that comes closest to a size and speed, which is how settings are kept
+    /// (and how versions before 2.8, with a slider for each, kept them).
+    /// </summary>
+    public static int Nearest(int sizePercent, SpeedPreset speed) => sizePercent switch
+    {
+        < 38 => 0,
+        < 63 => 1,
+        < 100 => 2,
+        _ => speed == SpeedPreset.BestQuality ? 4 : 3
+    };
+}
+
 /// <summary>
 /// What a conversion produced: the output path (a folder when the conversion fans out into
 /// several files) and an optional short remark for the UI, e.g. "lossless copy".

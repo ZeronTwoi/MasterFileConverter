@@ -19,7 +19,7 @@ using System.Text.RegularExpressions;
 using ImageMagick;
 using ImageMagick.Drawing;
 
-const string TileTop = "#5E9BFF", TileBottom = "#2E60DC";
+const string TileTop = "#2A2A30", TileBottom = "#0A0A0C";
 const double SecondArrow = 0.8; // the arrow coming back is a little lighter than the one going out
 
 var root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(ThisFile())!, ".."));
@@ -95,8 +95,10 @@ static Shape Design(int side)
     // a line is sharp when both its edges fall between two pixels
     double OnPixels(double centre) => Math.Round(centre - weight / 2) + weight / 2;
     double top = OnPixels(s / 2 - apart * s);
+    // the line around the tile: what tells a dark tile from a dark taskbar or menu, a whole pixel at any size
+    double outline = Math.Max(1, Math.Round(s / 48));
     return new Shape(side, Math.Round(inset * s), radius * s, weight,
-        Math.Round(s / 2 - half * s), Math.Round(s / 2 + half * s), top, s - top, head * s);
+        Math.Round(s / 2 - half * s), Math.Round(s / 2 + half * s), top, s - top, head * s, outline);
 }
 
 static string ArrowOut(Shape d) =>
@@ -116,7 +118,7 @@ static string Svg(Shape d, string title) => $"""
           <stop offset="1" stop-color="{TileBottom}"/>
         </linearGradient>
       </defs>
-      <rect x="{N(d.Inset)}" y="{N(d.Inset)}" width="{N(d.Side - 2 * d.Inset)}" height="{N(d.Side - 2 * d.Inset)}" rx="{N(d.Radius)}" fill="url(#tile)"/>
+      <rect x="{N(d.Inset + d.Outline / 2)}" y="{N(d.Inset + d.Outline / 2)}" width="{N(d.Side - 2 * d.Inset - d.Outline)}" height="{N(d.Side - 2 * d.Inset - d.Outline)}" rx="{N(d.Radius - d.Outline / 2)}" fill="url(#tile)" stroke="#fff" stroke-width="{N(d.Outline)}"/>
       <g fill="none" stroke="#fff" stroke-width="{N(d.Stroke)}" stroke-linecap="round" stroke-linejoin="round">
         <path d="{ArrowOut(d)}"/>
         <path d="{ArrowBack(d)}" opacity="{N(SecondArrow)}"/>
@@ -144,6 +146,15 @@ static MagickImage Render(int side)
         tile.Alpha(AlphaAction.Set);
         tile.Composite(mask, CompositeOperator.CopyAlpha);
     }
+
+    // the line around the tile, on top of its edge
+    new Drawables()
+        .StrokeColor(MagickColors.White)
+        .StrokeWidth(d.Outline * over)
+        .FillColor(MagickColors.Transparent)
+        .RoundRectangle(At(d.Inset + d.Outline / 2), At(d.Inset + d.Outline / 2), At(d.Side - d.Inset - d.Outline / 2), At(d.Side - d.Inset - d.Outline / 2),
+            (d.Radius - d.Outline / 2) * over, (d.Radius - d.Outline / 2) * over)
+        .Draw(tile);
 
     IDrawables<ushort> Pen() => new Drawables()
         .StrokeColor(MagickColors.White)
@@ -246,4 +257,4 @@ static byte[] Ico(IReadOnlyList<(int Side, byte[] Data)> pictures)
     return file.ToArray();
 }
 
-record Shape(int Side, double Inset, double Radius, double Stroke, double Left, double Right, double TopLine, double BottomLine, double Head);
+record Shape(int Side, double Inset, double Radius, double Stroke, double Left, double Right, double TopLine, double BottomLine, double Head, double Outline);

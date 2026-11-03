@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FileConverter.Core;
+using FileConverter.Core.Automation;
 using FileConverter.Core.Converters;
 using FileConverter.Core.Platform;
 using FileConverter.Core.Settings;
@@ -17,6 +18,8 @@ public interface IAppHost
 {
     Task<IReadOnlyList<string>> PickFilesAsync();
     Task<string?> PickFolderAsync(string title);
+
+    Task CopyTextAsync(string text) => Task.CompletedTask;
 
     /// <summary>Closes the window, and with it the app.</summary>
     void Close();
@@ -77,48 +80,25 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private FileItemViewModel? _selectedItem;
 
-    public IReadOnlyList<string> SpeedOptions { get; } =
-        ["Fastest", "Fast", "Balanced", "Best quality"];
-
     public IReadOnlyList<string> ExistingFileOptions { get; } = ["Keep both", "Replace", "Skip"];
 
+    /// <summary>
+    /// The Result slider's position (see <see cref="ResultLevels"/>): it decides how small results
+    /// are made and how fast they are encoded. Moving it by hand takes the speed back from Auto.
+    /// </summary>
     [ObservableProperty]
-    private int _sizePercent = 100;
+    [NotifyPropertyChangedFor(nameof(ResultText), nameof(SizePercent))]
+    private int _resultLevel = ResultLevels.Default;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText), nameof(ResultLevel), nameof(ResultText))]
-    private int _speedIndex = 2;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText), nameof(ResultLevel), nameof(ResultText))]
+    [NotifyPropertyChangedFor(nameof(EffectiveSpeedText), nameof(ResultText))]
     private bool _autoSpeed;
 
-    /// <summary>
-    /// The Result slider: the speed in plain words, from 0 (done soonest) to 3 (the best result
-    /// for its size). It shows the speed in force — the one chosen for this PC while Auto is
-    /// on — and moving it chooses that speed by hand. Speed only ever trades time against how
-    /// small a file can be made at a given look, so it does not compete with the File size slider.
-    /// </summary>
-    public int ResultLevel
-    {
-        get => (int)SpeedInForce;
-        set
-        {
-            value = Math.Clamp(value, 0, SpeedOptions.Count - 1);
-            if (value == ResultLevel) return;
-            AutoSpeed = false;
-            SpeedIndex = value;
-        }
-    }
+    /// <summary>What the slider's position asks of every file's size.</summary>
+    public int SizePercent => ResultLevels.All[ResultLevel].SizePercent;
 
     /// <summary>What the Result slider's position means, said under it.</summary>
-    public string ResultText => (ResultLevel switch
-    {
-        0 => "Done soonest, larger files",
-        1 => "Quick, slightly larger files",
-        2 => "Balanced",
-        _ => "Best for its size, takes longest"
-    }) + (AutoSpeed ? " (chosen for this PC)" : "");
+    public string ResultText => ResultLevels.All[ResultLevel].Text + (AutoSpeed ? " (speed chosen for this PC)" : "");
 
     [ObservableProperty]
     private string? _customOutputDirectory;
@@ -201,13 +181,7 @@ public partial class MainViewModel : ObservableObject
 
     public string VersionText { get; } = "v" + AppInfo.Version;
 
-    public string SizePercentText => SizePercent >= 100
-        ? "Original quality (no size target)"
-        : $"Target ≈ {SizePercent}% of original size";
-
-    public string EffectiveSpeedText => AutoSpeed
-        ? $"{SpeedOptions[(int)_detected.Preset]} for this PC ({_detected.Description})"
-        : "";
+    public string EffectiveSpeedText => AutoSpeed ? $"{_detected.Preset} for this PC ({_detected.Description})" : "";
 
     public string OutputDirectoryText => CustomOutputDirectory ?? "Same folder as each source file";
     public bool HasCustomOutputDirectory => CustomOutputDirectory != null;
@@ -227,8 +201,7 @@ public partial class MainViewModel : ObservableObject
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _saveTimer.Tick += (_, _) => Flush();
 
-        SizePercent = _settings.SizePercent;
-        SpeedIndex = (int)_settings.Speed;
+        ResultLevel = ResultLevels.Nearest(_settings.SizePercent, _settings.Speed);
         AutoSpeed = _settings.AutoSpeed;
         UseGpu = _settings.UseGpu;
         CombineFiles = _settings.CombineFiles;
@@ -257,8 +230,8 @@ public partial class MainViewModel : ObservableObject
     public void Persist()
     {
         if (_loading) return;
-        _settings.SizePercent = SizePercent;
-        _settings.Speed = (SpeedPreset)Math.Clamp(SpeedIndex, 0, 3);
+        _settings.SizePercent = ResultLevels.All[ResultLevel].SizePercent;
+        _settings.Speed = ResultLevels.All[ResultLevel].Speed;
         _settings.AutoSpeed = AutoSpeed;
         _settings.UseGpu = UseGpu;
         _settings.CombineFiles = CombineFiles;
@@ -277,13 +250,13 @@ public partial class MainViewModel : ObservableObject
         _store.Save(_settings);
     }
 
-    partial void OnSizePercentChanged(int value)
+    partial void OnResultLevelChanging(int value)
     {
-        OnPropertyChanged(nameof(SizePercentText));
-        Persist();
+        if (!_loading) AutoSpeed = false;
     }
 
-    partial void OnSpeedIndexChanged(int value) => Persist();
+    partial void OnResultLevelChanged(int value) => Persist();
+
     partial void OnAutoSpeedChanged(bool value) => Persist();
     partial void OnUseGpuChanged(bool value) => Persist();
     partial void OnExistingFileIndexChanged(int value) => Persist();
@@ -303,21 +276,26 @@ public partial class MainViewModel : ObservableObject
 
     // ---------- appearance ----------
 
-    public bool IsDarkTheme => _settings.Theme == "dark";
-    public bool IsLightTheme => _settings.Theme == "light";
-    public bool IsSystemTheme => _settings.Theme == "system";
+    /// <summary>The colour of the window's lines and accents, chosen in the ··· menu.</summary>
+    public string LineColour => _settings.LineColour;
 
-    /// <summary>"dark", "light", or "system" to follow the desktop's own setting.</summary>
     [RelayCommand]
-    private void SetTheme(string theme)
+    private void SetLineColour(string id)
     {
-        if (theme is not ("dark" or "light" or "system")) return;
-        _settings.Theme = theme;
-        OnPropertyChanged(nameof(IsDarkTheme));
-        OnPropertyChanged(nameof(IsLightTheme));
-        OnPropertyChanged(nameof(IsSystemTheme));
-        if (Avalonia.Application.Current is App app) app.ApplyTheme(theme);
+        if (!LineColours.All.Any(c => c.Id == id)) return;
+        _settings.LineColour = id;
+        OnPropertyChanged(nameof(LineColour));
+        if (Avalonia.Application.Current is App app) app.ApplyLineColour(id);
         Persist();
+    }
+
+    /// <summary>Puts what an MCP client needs to reach this app on the clipboard.</summary>
+    [RelayCommand]
+    private async Task CopyAgentSetup()
+    {
+        if (Host == null) return;
+        await Host.CopyTextAsync(AgentSetup.McpClientConfig());
+        OverallStatus = "AI agent setup copied — paste it into your agent's MCP settings";
     }
 
     /// <summary>Opens the folder settings.json lives in.</summary>
@@ -826,8 +804,8 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Formats in the list whose size and quality are set in Format settings, so the File size
-    /// slider does not decide them — said under the slider. Null when it decides for every file.
+    /// Formats in the list whose size and quality are set in Format settings, so the Result
+    /// slider does not decide their size — said under the slider. Null when it decides for every file.
     /// </summary>
     [ObservableProperty]
     private string? _sliderExceptionText;
@@ -886,7 +864,7 @@ public partial class MainViewModel : ObservableObject
     /// make them convert unlike the rest of their format go into numbered, coloured groups — the
     /// same settings, the same group — so several groups can be told apart at a glance; files
     /// that only have what every file of their format has get a plain mark that says so. Also
-    /// works out which files are combined, and says under the File size slider which files it
+    /// works out which files are combined, and says under the Result slider which files it
     /// does not decide.
     /// </summary>
     private void RefreshCustomMarks()
@@ -1061,8 +1039,6 @@ public partial class MainViewModel : ObservableObject
 
             _detected = PerformanceDetector.Detect(report.Faster ? report.Gpu : GpuEncoder.None);
             OnPropertyChanged(nameof(EffectiveSpeedText));
-            OnPropertyChanged(nameof(ResultLevel));
-            OnPropertyChanged(nameof(ResultText));
         }
         catch
         {
@@ -1471,8 +1447,8 @@ public partial class MainViewModel : ObservableObject
         UseGpu = UseGpu
     }.WithDetail(EffectiveSettings(item, merging));
 
-    /// <summary>The speed conversions run at: the one chosen for this PC while Auto is on, else the one picked.</summary>
-    public SpeedPreset SpeedInForce => AutoSpeed ? _detected.Preset : (SpeedPreset)Math.Clamp(SpeedIndex, 0, 3);
+    /// <summary>The speed conversions run at: the one chosen for this PC while Auto is on, else the Result slider's.</summary>
+    public SpeedPreset SpeedInForce => AutoSpeed ? _detected.Preset : ResultLevels.All[ResultLevel].Speed;
 
     [RelayCommand(CanExecute = nameof(CanConvert))]
     private async Task ConvertAllAsync()

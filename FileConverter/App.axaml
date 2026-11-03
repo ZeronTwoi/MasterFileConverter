@@ -12,7 +12,7 @@
                 <ResourceInclude Source="/Themes/Palette.axaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <local:CategoryToBrushConverter x:Key="CategoryToBrush" />
+            <local:IsEqualConverter x:Key="IsEqual" />
             <local:GroupToBrushConverter x:Key="GroupToBrush" />
         </ResourceDictionary>
     </Application.Resources>
@@ -20,8 +20,7 @@
     <Application.Styles>
         <FluentTheme>
             <FluentTheme.Palettes>
-                <ColorPaletteResources x:Key="Dark" Accent="#4F8CFF" RegionColor="#121418" ErrorText="#E5595F" />
-                <ColorPaletteResources x:Key="Light" Accent="#2F6FE0" RegionColor="#F3F4F7" ErrorText="#C93A40" />
+                <ColorPaletteResources x:Key="Dark" Accent="#FFFFFF" RegionColor="#0C0C0D" ErrorText="#FF6E6E" />
             </FluentTheme.Palettes>
         </FluentTheme>
         <StyleInclude Source="/Themes/Controls.axaml" />

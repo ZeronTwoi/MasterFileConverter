@@ -134,7 +134,7 @@ public class SettingCatalogTests
         Assert.Equal(Values((K.Quality, "80")), SettingCatalog.Resolve(webp, Values((K.Lossless, "off"), (K.Quality, "80"))));
         Assert.Equal(SizeModes.Lossless, SettingCatalog.ModeOf(webp, Values((K.Lossless, "on"))));
 
-        // whether the File size slider still decides
+        // whether the Result slider still decides
         Assert.True(SettingCatalog.ReplacesSlider(video, SettingCatalog.Resolve(video, Values((K.Crf, "20")))));
         Assert.False(SettingCatalog.ReplacesSlider(video, SettingCatalog.Resolve(video, Values((K.SizeMode, SizeModes.Quality)))));
         Assert.False(SettingCatalog.ReplacesSlider(video, Values((K.MaxWidth, "1280"))));

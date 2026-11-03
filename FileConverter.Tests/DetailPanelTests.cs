@@ -158,7 +158,7 @@ public class DetailPanelTests(Samples samples) : IClassFixture<Samples>
     }
 
     /// <summary>
-    /// Size and quality are set in one place at a time: the File size slider at the bottom, or
+    /// Size and quality are set in one place at a time: the Result slider at the bottom, or
     /// one way chosen for a format in the panel — never several that override each other.
     /// </summary>
     [AvaloniaFact]

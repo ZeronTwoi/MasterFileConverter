@@ -856,26 +856,56 @@ public class CompressAndGroupTests(Samples samples) : IClassFixture<Samples>
     // ---------- the Result slider ----------
 
     [AvaloniaFact]
-    public void TheResultSliderIsTheSpeedInPlainWords()
+    public void TheResultSliderDecidesSizeAndSpeedTogether()
     {
         using var folder = TestSetup.NewFolder();
         var viewModel = NewViewModel(folder);
 
-        viewModel.AutoSpeed = true;                         // chosen for this PC: the slider shows that choice
-        var chosen = viewModel.ResultLevel;
-        Assert.Equal((int)viewModel.SpeedInForce, chosen);
-        Assert.EndsWith("(chosen for this PC)", viewModel.ResultText);
+        // it starts on nothing lost, in reasonable time
+        Assert.Equal(ResultLevels.Default, viewModel.ResultLevel);
+        Assert.Equal(100, viewModel.SizePercent);
+        Assert.Equal(SpeedPreset.Balanced, viewModel.SpeedInForce);
 
-        // moved by hand — somewhere other than where it stands, which depends on the PC — Auto is off
-        int other = chosen == 0 ? 3 : 0;
-        viewModel.ResultLevel = other;
-        Assert.False(viewModel.AutoSpeed);
-        Assert.Equal((SpeedPreset)other, viewModel.SpeedInForce);
         viewModel.ResultLevel = 0;
-        Assert.Equal(SpeedPreset.Fastest, viewModel.SpeedInForce);
-        Assert.StartsWith("Done soonest", viewModel.ResultText);
-        viewModel.ResultLevel = 3;
+        Assert.Equal(25, viewModel.SizePercent);
+        Assert.Equal(SpeedPreset.Fast, viewModel.SpeedInForce);
+        Assert.StartsWith("About 25%", viewModel.ResultText);
+
+        viewModel.ResultLevel = 4;
+        Assert.Equal(100, viewModel.SizePercent);
         Assert.Equal(SpeedPreset.BestQuality, viewModel.SpeedInForce);
-        Assert.Equal(3, viewModel.SpeedIndex);              // the Speed list in Speed details says the same
+
+        // Auto takes over the speed and leaves the size to the slider ...
+        viewModel.ResultLevel = 1;
+        viewModel.AutoSpeed = true;
+        Assert.Equal(50, viewModel.SizePercent);
+        Assert.Equal(PerformanceDetector.Detect().Preset, viewModel.SpeedInForce);
+        Assert.EndsWith("(speed chosen for this PC)", viewModel.ResultText);
+
+        // ... until the slider is moved by hand
+        viewModel.ResultLevel = 2;
+        Assert.False(viewModel.AutoSpeed);
+        Assert.Equal(SpeedPreset.Balanced, viewModel.SpeedInForce);
+    }
+
+    /// <summary>What versions with two sliders saved lands on the position that comes closest.</summary>
+    [Theory]
+    [InlineData(10, SpeedPreset.Balanced, 0)]
+    [InlineData(25, SpeedPreset.Fast, 0)]
+    [InlineData(50, SpeedPreset.BestQuality, 1)]
+    [InlineData(70, SpeedPreset.Fastest, 2)]
+    [InlineData(95, SpeedPreset.Balanced, 2)]
+    [InlineData(100, SpeedPreset.Fastest, 3)]
+    [InlineData(100, SpeedPreset.Balanced, 3)]
+    [InlineData(100, SpeedPreset.BestQuality, 4)]
+    public void SavedSlidersLandOnTheNearestResult(int size, SpeedPreset speed, int expected) =>
+        Assert.Equal(expected, ResultLevels.Nearest(size, speed));
+
+    /// <summary>A position is saved as the size and speed it stands for, and comes back as itself.</summary>
+    [Fact]
+    public void EveryResultPositionSurvivesBeingSaved()
+    {
+        for (int position = 0; position < ResultLevels.All.Count; position++)
+            Assert.Equal(position, ResultLevels.Nearest(ResultLevels.All[position].SizePercent, ResultLevels.All[position].Speed));
     }
 }

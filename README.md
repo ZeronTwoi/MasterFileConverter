@@ -40,14 +40,14 @@ settings: on Windows under *Settings → Apps → Installed apps*, on Linux with
 
 | | From | To |
 |---|---|---|
-| Images | jpg, png, gif, webp, bmp, tiff, heic, ico, svg | jpg, png, gif, webp, bmp, tiff, pdf |
-| Audio | mp3, wav, flac, aac, ogg, m4a, wma, opus | mp3, wav, flac, aac, m4a, ogg, opus |
-| Video | mp4, mkv, avi, webm, mov, wmv, flv, ts, m4v | mp4, mkv, avi, webm, mov, gif, audio only, picture frames |
-| Documents | docx, doc, odt, rtf, html, md, epub, txt | pdf, docx, odt, rtf, html, md, epub, txt, pages as pictures |
-| Spreadsheets | xlsx, xls, ods, csv | pdf, xlsx, ods, csv, html |
-| Presentations | pptx, ppt, odp | pdf, pptx, odp, slides as pictures |
-| PDF | pdf | docx, xlsx, pptx, odt, ods, odp, rtf, html, md, epub, txt, csv, png, jpg, tiff, svg |
-| Archives | zip, 7z, rar, tar, gz, bz2 | zip, 7z, tar (rar when WinRAR or `rar` is installed) |
+| Images | jpg, png, gif, webp, avif, jxl, bmp, tiff, heic, ico, svg, tga, psd, dds, hdr, exr | jpg, png, gif, webp, avif, jxl, bmp, tiff, ico, tga, pdf |
+| Audio | mp3, wav, aiff, flac, aac, ogg, m4a, m4b, wma, opus, ac3, eac3, mka | mp3, wav, aiff, flac, aac, m4a, ogg, opus, ac3 |
+| Video | mp4, mkv, avi, webm, mov, wmv, flv, ts, mts, m2ts, m4v, mpg, vob, 3gp, ogv | mp4, mkv, avi, webm, mov, gif, audio only, picture frames |
+| Documents | docx, doc, docm, dotx, odt, rtf, html, md, epub, txt | pdf, docx, odt, rtf, html, md, epub, txt, pages as pictures |
+| Spreadsheets | xlsx, xls, xlsm, ods, csv, tsv | pdf, xlsx, ods, csv, tsv, html |
+| Presentations | pptx, ppt, ppsx, potx, pptm, odp | pdf, pptx, odp, slides as pictures |
+| PDF | pdf | docx, xlsx, pptx, odt, ods, odp, rtf, html, md, epub, txt, csv, tsv, png, jpg, tiff, svg |
+| Archives | zip, 7z, rar, tar, gz, bz2, xz | zip, 7z, tar (rar when WinRAR or `rar` is installed) |
 
 Pictures, sound, video and archives can also be set to their own format, just to be made smaller.
 
@@ -63,15 +63,15 @@ Pictures, sound, video and archives can also be set to their own format, just to
   Excel and PowerPoint or LibreOffice are installed, they lay the pages out exactly instead.
 - **Fast.** Every processor core is used, and the graphics card for video where that is
   actually quicker.
-- **Simple, precise when wanted.** One slider for file size and one for how much care each
-  file gets, for all files. *Format settings* give exact control for the files you select or for
+- **Simple, precise when wanted.** One slider, Result, sets how small and how good the files get. *Format settings* give exact control for the files you select or for
   every file of a format: resolution, codec, pages, password, their own file size, quality or
   bitrate — files you give the same settings are shown as one coloured group.
 - **Offline, and nothing behind your back.** Your files never leave your computer. The app
   only goes online for what you agree to: fetching the engines, one look per start for a newer
   version if you say yes when it asks, and installing that version when you click. No account,
   no ads, no usage data, nothing running in the background, nothing started with the system.
-- **A command line** for scripts, in the same download.
+- **Made for agents too.** AI agents can use it as a tool (MCP), and scripts through a command line
+  with JSON output, in the same download: see [docs/agents.md](docs/agents.md).
 
 All the details — every setting, what "lossless" covers, speed measurements, the command line,
 what has been tested — are in [docs/details.md](docs/details.md).

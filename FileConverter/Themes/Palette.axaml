@@ -1,73 +1,110 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- The app's own colours, in a dark and a light version. Controls pick them up with
-         {DynamicResource …}, so switching the theme recolours everything at once. -->
-    <ResourceDictionary.ThemeDictionaries>
+    <!-- The app's look: dark background, thin lines, one colour for lines and accents.
+         The brushes under "the line colour" are changed in place by App.ApplyLineColour when
+         another colour is chosen in the ··· menu, so everything that uses them follows at once. -->
 
-        <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="BgBrush" Color="#121418" />
-            <SolidColorBrush x:Key="SurfaceBrush" Color="#1B1E25" />
-            <SolidColorBrush x:Key="Surface2Brush" Color="#232833" />
-            <SolidColorBrush x:Key="Surface2HoverBrush" Color="#2B3140" />
-            <SolidColorBrush x:Key="Surface2PressedBrush" Color="#242A37" />
-            <SolidColorBrush x:Key="Border1Brush" Color="#2E3340" />
-            <SolidColorBrush x:Key="BorderHoverBrush" Color="#44507F" />
-            <SolidColorBrush x:Key="TextBrush" Color="#E8EAF0" />
-            <SolidColorBrush x:Key="TextDimBrush" Color="#98A1B3" />
-            <SolidColorBrush x:Key="AccentBrush" Color="#4F8CFF" />
-            <SolidColorBrush x:Key="AccentHoverBrush" Color="#6B9FFF" />
-            <SolidColorBrush x:Key="AccentPressedBrush" Color="#3F79E8" />
-            <SolidColorBrush x:Key="OnAccentBrush" Color="#0B1220" />
-            <SolidColorBrush x:Key="SelectionBrush" Color="#1E2A44" />
-            <SolidColorBrush x:Key="SuccessBrush" Color="#3FB68B" />
-            <SolidColorBrush x:Key="ErrorBrush" Color="#E5595F" />
-            <SolidColorBrush x:Key="WarnBrush" Color="#E0A23C" />
-            <SolidColorBrush x:Key="SetupBannerBrush" Color="#242038" />
-            <SolidColorBrush x:Key="SetupBannerBorderBrush" Color="#473E6B" />
-            <SolidColorBrush x:Key="InfoBannerBrush" Color="#1A2638" />
-            <SolidColorBrush x:Key="InfoBannerBorderBrush" Color="#2E4A74" />
-        </ResourceDictionary>
+    <!-- the type: a terminal's, whichever of these the system has -->
+    <FontFamily x:Key="ContentControlThemeFontFamily">Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Ubuntu Mono, monospace, $Default</FontFamily>
 
-        <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="BgBrush" Color="#F3F4F7" />
-            <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="Surface2Brush" Color="#F0F2F6" />
-            <SolidColorBrush x:Key="Surface2HoverBrush" Color="#E6E9F0" />
-            <SolidColorBrush x:Key="Surface2PressedBrush" Color="#DCE0EA" />
-            <SolidColorBrush x:Key="Border1Brush" Color="#D5D9E2" />
-            <SolidColorBrush x:Key="BorderHoverBrush" Color="#9AA8D8" />
-            <SolidColorBrush x:Key="TextBrush" Color="#1A1D24" />
-            <SolidColorBrush x:Key="TextDimBrush" Color="#5F6878" />
-            <SolidColorBrush x:Key="AccentBrush" Color="#2F6FE0" />
-            <SolidColorBrush x:Key="AccentHoverBrush" Color="#4480EA" />
-            <SolidColorBrush x:Key="AccentPressedBrush" Color="#255FC8" />
-            <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="SelectionBrush" Color="#E3ECFD" />
-            <SolidColorBrush x:Key="SuccessBrush" Color="#1E8E66" />
-            <SolidColorBrush x:Key="ErrorBrush" Color="#C93A40" />
-            <SolidColorBrush x:Key="WarnBrush" Color="#B5791A" />
-            <SolidColorBrush x:Key="SetupBannerBrush" Color="#F0ECFB" />
-            <SolidColorBrush x:Key="SetupBannerBorderBrush" Color="#C9BEEA" />
-            <SolidColorBrush x:Key="InfoBannerBrush" Color="#EAF1FD" />
-            <SolidColorBrush x:Key="InfoBannerBorderBrush" Color="#BCD1F5" />
-        </ResourceDictionary>
+    <!-- square corners throughout, the Fluent controls' too -->
+    <CornerRadius x:Key="ControlCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="OverlayCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="SliderThumbCornerRadius">0</CornerRadius>
+    <x:Double x:Key="SliderHorizontalThumbWidth">9</x:Double>
+    <x:Double x:Key="SliderHorizontalThumbHeight">16</x:Double>
 
-    </ResourceDictionary.ThemeDictionaries>
+    <!-- the fixed colours -->
+    <SolidColorBrush x:Key="BgBrush" Color="#0C0C0D" />
+    <SolidColorBrush x:Key="Surface2Brush" Color="#141416" />
+    <SolidColorBrush x:Key="Surface2HoverBrush" Color="#222225" />
+    <SolidColorBrush x:Key="Surface2PressedBrush" Color="#2C2C30" />
+    <SolidColorBrush x:Key="TextBrush" Color="#EDEDED" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="#9A9A9F" />
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#0C0C0D" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#5FD38D" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="#FF6E6E" />
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFB000" />
+    <SolidColorBrush x:Key="ChipTextBrush" Color="#0C0C0D" />
 
-    <!-- category chips: the same in both themes (dark text on a saturated colour) -->
-    <SolidColorBrush x:Key="CatImageBrush" Color="#3FB68B" />
-    <SolidColorBrush x:Key="CatAudioBrush" Color="#B07CE8" />
-    <SolidColorBrush x:Key="CatVideoBrush" Color="#4F8CFF" />
-    <SolidColorBrush x:Key="CatDocumentBrush" Color="#E0A23C" />
-    <SolidColorBrush x:Key="CatArchiveBrush" Color="#E06C9F" />
-    <SolidColorBrush x:Key="CatOtherBrush" Color="#98A1B3" />
-    <SolidColorBrush x:Key="ChipTextBrush" Color="#0B1220" />
+    <!-- the line colour (white unless another is chosen): App.ApplyLineColour sets these -->
+    <SolidColorBrush x:Key="LineBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="LineDimBrush" Color="#66FFFFFF" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#D9D9D9" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#B3B3B3" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#26FFFFFF" />
+
+    <!-- the Fluent theme's controls, in the same colours -->
+    <StaticResource x:Key="SliderTrackFill" ResourceKey="LineDimBrush" />
+    <StaticResource x:Key="SliderTrackFillPointerOver" ResourceKey="LineDimBrush" />
+    <StaticResource x:Key="SliderTrackFillPressed" ResourceKey="LineDimBrush" />
+    <StaticResource x:Key="SliderTrackValueFill" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="SliderTrackValueFillPointerOver" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="SliderTrackValueFillPressed" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="SliderThumbBackground" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="SliderThumbBackgroundPointerOver" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="SliderThumbBackgroundPressed" ResourceKey="AccentPressedBrush" />
+    <StaticResource x:Key="SliderTickBarFill" ResourceKey="LineDimBrush" />
+
+    <StaticResource x:Key="ComboBoxBackground" ResourceKey="BgBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="Surface2HoverBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="Surface2PressedBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundFocused" ResourceKey="BgBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundUnfocused" ResourceKey="BgBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="LineDimBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="LineBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushPressed" ResourceKey="LineBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushFocused" ResourceKey="LineBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushUnfocused" ResourceKey="LineDimBrush" />
+    <StaticResource x:Key="ComboBoxDropDownBackground" ResourceKey="BgBrush" />
+    <StaticResource x:Key="ComboBoxDropDownBorderBrush" ResourceKey="LineBrush" />
+    <StaticResource x:Key="ComboBoxItemBackgroundPointerOver" ResourceKey="Surface2HoverBrush" />
+    <StaticResource x:Key="ComboBoxItemBackgroundPressed" ResourceKey="Surface2PressedBrush" />
+    <StaticResource x:Key="ComboBoxItemBackgroundSelected" ResourceKey="SelectionBrush" />
+    <StaticResource x:Key="ComboBoxItemBackgroundSelectedPointerOver" ResourceKey="SelectionBrush" />
+    <StaticResource x:Key="ComboBoxItemBackgroundSelectedPressed" ResourceKey="SelectionBrush" />
+    <StaticResource x:Key="ComboBoxItemPillFillBrush" ResourceKey="AccentBrush" />
+
+    <StaticResource x:Key="TextControlBackground" ResourceKey="BgBrush" />
+    <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="Surface2HoverBrush" />
+    <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="BgBrush" />
+    <StaticResource x:Key="TextControlBorderBrush" ResourceKey="LineDimBrush" />
+    <StaticResource x:Key="TextControlBorderBrushPointerOver" ResourceKey="LineBrush" />
+    <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="LineBrush" />
+    <StaticResource x:Key="TextControlForegroundFocused" ResourceKey="TextBrush" />
+
+    <StaticResource x:Key="CheckBoxCheckBackgroundFillChecked" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="CheckBoxCheckBackgroundFillCheckedPointerOver" ResourceKey="AccentHoverBrush" />
+    <StaticResource x:Key="CheckBoxCheckBackgroundFillCheckedPressed" ResourceKey="AccentPressedBrush" />
+    <StaticResource x:Key="CheckBoxCheckBackgroundStrokeUnchecked" ResourceKey="LineBrush" />
+    <StaticResource x:Key="CheckBoxCheckBackgroundStrokeUncheckedPointerOver" ResourceKey="LineBrush" />
+    <StaticResource x:Key="CheckBoxCheckBackgroundStrokeChecked" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="CheckBoxCheckBackgroundStrokeCheckedPointerOver" ResourceKey="AccentHoverBrush" />
+    <StaticResource x:Key="CheckBoxCheckGlyphForegroundChecked" ResourceKey="OnAccentBrush" />
+    <StaticResource x:Key="CheckBoxCheckGlyphForegroundCheckedPointerOver" ResourceKey="OnAccentBrush" />
+    <StaticResource x:Key="CheckBoxCheckGlyphForegroundCheckedPressed" ResourceKey="OnAccentBrush" />
+
+    <StaticResource x:Key="RadioButtonOuterEllipseStroke" ResourceKey="LineBrush" />
+    <StaticResource x:Key="RadioButtonOuterEllipseStrokePointerOver" ResourceKey="LineBrush" />
+    <StaticResource x:Key="RadioButtonOuterEllipseCheckedStroke" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="RadioButtonOuterEllipseCheckedStrokePointerOver" ResourceKey="AccentHoverBrush" />
+    <StaticResource x:Key="RadioButtonOuterEllipseCheckedFill" ResourceKey="AccentBrush" />
+    <StaticResource x:Key="RadioButtonOuterEllipseCheckedFillPointerOver" ResourceKey="AccentHoverBrush" />
+    <StaticResource x:Key="RadioButtonCheckGlyphFill" ResourceKey="OnAccentBrush" />
+    <StaticResource x:Key="RadioButtonCheckGlyphFillPointerOver" ResourceKey="OnAccentBrush" />
+
+    <StaticResource x:Key="MenuFlyoutPresenterBackground" ResourceKey="BgBrush" />
+    <StaticResource x:Key="MenuFlyoutPresenterBorderBrush" ResourceKey="LineBrush" />
+    <StaticResource x:Key="MenuFlyoutItemBackgroundPointerOver" ResourceKey="Surface2HoverBrush" />
+    <StaticResource x:Key="MenuFlyoutItemBackgroundPressed" ResourceKey="Surface2PressedBrush" />
+    <StaticResource x:Key="MenuFlyoutSubItemBackgroundSubMenuOpened" ResourceKey="Surface2HoverBrush" />
 
     <!-- the logo as the window's header draws it: the 32-pixel design of build/MakeIcon.cs, which prints these -->
     <LinearGradientBrush x:Key="LogoTileBrush" StartPoint="50%,0%" EndPoint="50%,100%">
-        <GradientStop Offset="0" Color="#5E9BFF" />
-        <GradientStop Offset="1" Color="#2E60DC" />
+        <GradientStop Offset="0" Color="#2A2A30" />
+        <GradientStop Offset="1" Color="#0A0A0C" />
     </LinearGradientBrush>
     <StreamGeometry x:Key="LogoArrowOut">M8,10.5 H24 M19.84,6.34 L24,10.5 L19.84,14.66</StreamGeometry>
     <StreamGeometry x:Key="LogoArrowBack">M24,21.5 H8 M12.16,17.34 L8,21.5 L12.16,25.66</StreamGeometry>

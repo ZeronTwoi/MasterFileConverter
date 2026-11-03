@@ -3,6 +3,34 @@
 The part for a version is also what its page under
 [Releases](https://github.com/ZeronTwoi/MasterFileConverter/releases) says.
 
+## 2.8.0
+
+A new look, one slider, and a way in for AI agents.
+
+- **A plain dark window.** Dark background, thin white lines, square corners and a terminal's
+  type, with each panel's title set into its line. The line colour can be changed in the ···
+  menu: *Border colour* offers white, green, amber, cyan, blue, purple and red. This replaces
+  the light theme and *Match the system*: the app is dark now.
+- **One slider.** *File size* is gone and **Result** does both: from *Smallest* (about 25 % of
+  the size, quick) through *Full quality*, where it starts, to *Best* (full quality, the
+  smallest file at it, slowest). What you had set moves to the nearest position. An exact size
+  for a format or for the files selected is still there, under Format settings → *Set by*.
+- **A dark logo.** The same two arrows on a dark tile, in every size and place it is used.
+- **For AI agents and scripts** (see [docs/agents.md](docs/agents.md)):
+  - `--mcp` runs the app as a tool server (Model Context Protocol) with the tools `convert`,
+    `list_formats`, `list_settings`, `status` and `setup_engines`. ··· menu → *Copy AI agent setup*
+    gives what to paste into an agent's settings.
+  - `--json` makes the command line print one JSON document: every result's path, size and
+    status, with error codes to act on.
+  - `--dry-run` says what would be written without writing; `--result` is the slider's five
+    positions; `--list-formats` and `--status` say what can be done on this computer.
+- **More formats.** New targets: AVIF, JPEG XL, ICO, TGA, AIFF, AC-3 and TSV. New sources besides
+  them: JFIF, HEIF, APNG, PSD, DDS, HDR, EXR, M4B, EAC-3, MKA, MTS/M2TS, MPG, VOB, 3GP, OGV, DOCM,
+  DOTX, XLSM, PPSX, POTX, PPTM, XZ and TXZ.
+- **The command line no longer guesses.** An unknown option, or a value it cannot use (`--speed
+  warp`), is now an error with exit code 2, where it used to become a file name or the default.
+  Exit code 3 means an engine is missing.
+
 ## 2.7.1
 
 - **An .aac file is as long as it is.** A raw AAC file has no length written in it, and the

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text.Json.Nodes;
+using FileConverter.Core.Automation;
 using FileConverter.Core.Diagnostics;
 using FileConverter.Core.Platform;
 using FileConverter.Core.Settings;
@@ -7,8 +9,12 @@ namespace FileConverter.Core;
 
 /// <summary>
 /// Headless command-line mode:
-///   --cli &lt;input&gt; [&lt;input2&gt; …] &lt;target-ext&gt; [--out &lt;dir&gt;] [--size &lt;10-100&gt;] [--speed …] [--set key=value …] [--each] [--no-gpu]
+///   --cli &lt;input&gt; [&lt;input2&gt; …] &lt;target-ext&gt; [--out &lt;dir&gt;] [--result …] [--size &lt;10-100&gt;] [--speed …] [--set key=value …] [--each] [--no-gpu] [--json] [--dry-run]
+///   --list-formats [&lt;source-ext&gt;]   what can be read and what it can become
 ///   --list-settings &lt;source-ext&gt; &lt;target-ext&gt;   the precise settings --set accepts for a conversion
+///   --status        the version and which engines are there
+///   --mcp           the app as a tool for AI agents (see <see cref="McpServer"/>)
+///   --agent-setup   what an MCP client needs in order to start it
 ///   --setup-tools   downloads FFmpeg and 7-Zip
 ///   --self-test     converts a generated sample of every format to every target and checks the results
 ///   --update        looks for a newer version of the app and installs it (--from &lt;file&gt;: from a download already here)
@@ -16,12 +22,13 @@ namespace FileConverter.Core;
 /// Several inputs with a combinable target (images → pdf/gif/tiff, anything → an
 /// archive) merge into ONE output unless --each is given; otherwise every input is
 /// converted on its own, in parallel.
-/// Exit codes: 0 success, 1 conversion error, 2 bad arguments.
+/// With --json, stdout holds one JSON document and nothing else (see <see cref="AgentJson"/>).
+/// Exit codes: 0 success, 1 conversion error, 2 bad arguments, 3 an engine it needs is not installed.
 /// </summary>
 public static class CliRunner
 {
     private static readonly string[] Commands =
-        ["--cli", "--setup-tools", "--self-test", "--list-settings", "--update", "--uninstall", "--help", "-h", "--version",
+        ["--cli", "--setup-tools", "--self-test", "--list-formats", "--list-settings", "--status", "--mcp", "--agent-setup", "--update", "--uninstall", "--help", "-h", "--version",
             Converters.PdfPageExport.WorkerCommand];
 
     /// <summary>Do these arguments ask for the command line rather than the window?</summary>
@@ -34,13 +41,20 @@ public static class CliRunner
 
           --cli <input> [<input2> …] <target-ext> [options]   convert files
               --out <dir>         write results to this folder (default: next to each source)
-              --size <10-100>     target size as a percentage of the source (100 = best quality)
-              --speed fastest|fast|balanced|best
+              --result smallest|small|good|full|best   how far files are taken, as the window's Result slider (default: full)
+              --size <10-100>     an exact target size as a percentage of the source, instead of the result's
+              --speed fastest|fast|balanced|best     an encoder speed, instead of the result's
               --set <key>=<value> a precise setting, e.g. --set quality=85 --set maxWidth=1920 (repeatable)
               --when-exists keep|replace|skip   what to do when the result's name is taken (default: keep both)
               --each              convert every input separately instead of combining them
               --no-gpu            keep video encoding on the CPU
-          --list-settings <source-ext> <target-ext>   show the settings --set accepts for a conversion
+              --dry-run           check everything and say what would be written, without writing
+              --json              stdout is one JSON document: every result's path, size and status
+          --list-formats [<source-ext>] [--json]      what can be read and what it can become
+          --list-settings <source-ext> <target-ext> [--json]   show the settings --set accepts for a conversion
+          --status [--json]       the version, and which engines this computer has
+          --mcp                   run as a tool server for AI agents (Model Context Protocol over stdin/stdout)
+          --agent-setup           print what an MCP client needs to start this copy of the app
           --setup-tools           download FFmpeg and 7-Zip
           --self-test             try every conversion on generated samples and report what works
               --filter <text>     only the cases whose name contains the text, e.g. "mp4" or "→ pdf"
@@ -51,6 +65,8 @@ public static class CliRunner
           --uninstall             remove the installed app, the engines it downloaded and its settings (Linux)
               --keep-settings     leave the settings for a later installation
           --version
+
+        Exit codes: 0 success, 1 a conversion failed, 2 bad arguments, 3 an engine it needs is not installed.
         """;
 
     public static int Run(string[] args)
@@ -63,14 +79,11 @@ public static class CliRunner
         {
             return RunCoreAsync(args).GetAwaiter().GetResult();
         }
-        catch (FriendlyException ex)
-        {
-            Console.Error.WriteLine("ERROR: " + ex.Message);
-            return 1;
-        }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("ERROR: " + ex);
+            var message = ex is FriendlyException ? ex.Message : ex.ToString();
+            if (args.Contains("--json")) PrintJson(AgentJson.Failure(new JobProblem(JobErrors.ConversionFailed, message)));
+            else Console.Error.WriteLine("ERROR: " + message);
             return 1;
         }
     }
@@ -83,6 +96,24 @@ public static class CliRunner
             using var request = new StreamReader(Console.OpenStandardInput(), new System.Text.UTF8Encoding(false));
             return await Converters.PdfPageExport.RunWorker(request, Console.Out);
         }
+        if (args.Contains("--mcp"))
+        {
+            // stdout is the protocol's: whatever else wants to print goes to stderr
+            var protocol = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
+            Console.SetOut(Console.Error);
+            using var requests = new StreamReader(Console.OpenStandardInput(), new System.Text.UTF8Encoding(false));
+            await new McpServer(requests, protocol).RunAsync();
+            return 0;
+        }
+        if (args.Contains("--agent-setup"))
+        {
+            Console.WriteLine(AgentSetup.McpClientConfig());
+            return 0;
+        }
+        if (args.Contains("--status"))
+            return Status(args);
+        if (args.Contains("--list-formats"))
+            return ListFormats(args);
         if (args.Contains("--version"))
         {
             Console.WriteLine($"{AppInfo.DisplayName} {Version} ({PlatformServices.Current.Name})");
@@ -111,211 +142,205 @@ public static class CliRunner
         if (args.Contains("--list-settings"))
             return ListSettings(args);
 
+        return await ConvertAsync(args);
+    }
+
+    private static async Task<int> ConvertAsync(string[] args)
+    {
+        bool json = args.Contains("--json");
+        bool dryRun = args.Contains("--dry-run");
+
+        int Refuse(JobProblem problem)
+        {
+            if (json) PrintJson(AgentJson.Failure(problem));
+            else Console.Error.WriteLine("ERROR: " + problem.Message);
+            return problem.Code == JobErrors.EngineMissing ? 3 : 2;
+        }
+        int BadValue(string option, string expected) =>
+            Refuse(new JobProblem(JobErrors.BadArguments, $"{option} expects {expected}."));
+
         var positional = new List<string>();
         var sets = new List<string>();
         string? outDir = null;
-        int size = 100;
-        var speed = SpeedPreset.Balanced;
+        ResultLevel? result = null;
+        int? size = null;
+        SpeedPreset? speed = null;
         var whenExists = ExistingFileAction.KeepBoth;
         bool each = false;
         bool gpu = true;
 
         for (int i = 0; i < args.Length; i++)
         {
+            // an option that takes a value and has none is an answer the caller needs, not a file name
+            string? Value() => i + 1 < args.Length && !args[i + 1].StartsWith("--") ? args[++i] : null;
             switch (args[i])
             {
-                case "--cli": break;
+                case "--cli" or "--json" or "--dry-run": break;
                 case "--each": each = true; break;
                 case "--no-gpu": gpu = false; break;
-                case "--out" when i + 1 < args.Length: outDir = args[++i]; break;
-                case "--set" when i + 1 < args.Length: sets.Add(args[++i]); break;
-                case "--size" when i + 1 < args.Length && int.TryParse(args[i + 1], out var parsed):
+                case "--out":
+                    outDir = Value();
+                    if (outDir == null) return BadValue("--out", "a folder");
+                    break;
+                case "--set":
+                    if (Value() is not { } pair) return BadValue("--set", "key=value");
+                    sets.Add(pair);
+                    break;
+                case "--result":
+                    result = Value() is { } name ? ResultLevels.Find(name) : null;
+                    if (result == null) return BadValue("--result", string.Join(", ", ResultLevels.All.Select(l => l.Name)));
+                    break;
+                case "--size":
+                    if (!int.TryParse(Value(), out var parsed)) return BadValue("--size", "a number from 10 to 100");
                     size = Math.Clamp(parsed, 10, 100);
-                    i++;
                     break;
-                case "--speed" when i + 1 < args.Length:
-                    speed = args[++i].ToLowerInvariant() switch
-                    {
-                        "fastest" => SpeedPreset.Fastest,
-                        "fast" => SpeedPreset.Fast,
-                        "balanced" => SpeedPreset.Balanced,
-                        "best" => SpeedPreset.BestQuality,
-                        _ => SpeedPreset.Balanced
-                    };
+                case "--speed":
+                    speed = Value() is { } speedName ? McpServer.ParseSpeed(speedName) : null;
+                    if (speed == null) return BadValue("--speed", "fastest, fast, balanced or best");
                     break;
-                case "--when-exists" when i + 1 < args.Length:
-                    whenExists = args[++i].ToLowerInvariant() switch
-                    {
-                        "replace" or "overwrite" => ExistingFileAction.Overwrite,
-                        "skip" => ExistingFileAction.Skip,
-                        _ => ExistingFileAction.KeepBoth
-                    };
+                case "--when-exists":
+                    if ((Value() is { } whenName ? McpServer.ParseWhenExists(whenName) : null) is not { } action)
+                        return BadValue("--when-exists", "keep, replace or skip");
+                    whenExists = action;
                     break;
-                default: positional.Add(args[i]); break;
+                default:
+                    if (args[i].StartsWith("--"))
+                        return Refuse(new JobProblem(JobErrors.BadArguments, $"unknown option {args[i]}. See --help."));
+                    positional.Add(args[i]);
+                    break;
             }
         }
 
         if (positional.Count < 2)
         {
+            if (json) return Refuse(new JobProblem(JobErrors.BadArguments, "expected: <input> [<input2> …] <target-ext>. See --help."));
             Console.Error.WriteLine(Usage);
             return 2;
         }
 
-        var targetExt = positional[^1].TrimStart('.').ToLowerInvariant();
-        var inputs = positional[..^1].Select(Path.GetFullPath).ToList();
-
-        foreach (var input in inputs)
+        var level = result ?? ResultLevels.All[ResultLevels.Default];
+        var (job, problem) = new ConversionJob
         {
-            if (!File.Exists(input))
-            {
-                Console.Error.WriteLine("ERROR: input file not found: " + input);
-                return 2;
-            }
-            var targets = FormatRegistry.GetTargets(FormatRegistry.GetExtension(input), ToolLocator.RarPath != null);
-            if (!targets.Contains(targetExt))
-            {
-                Console.Error.WriteLine($"ERROR: cannot convert .{FormatRegistry.GetExtension(input)} to .{targetExt}. Valid targets: {string.Join(", ", targets)}");
-                return 2;
-            }
-        }
+            Inputs = positional[..^1],
+            Target = positional[^1],
+            OutputDirectory = outDir,
+            SizePercent = size ?? level.SizePercent,
+            Speed = speed ?? level.Speed,
+            UseGpu = gpu,
+            WhenExists = whenExists,
+            Each = each,
+            Settings = sets
+        }.Check();
+        if (problem != null) return Refuse(problem);
 
-        bool mergeAll = inputs.Count > 1 && !each && inputs.All(i =>
-            Converters.MergeConversion.CanMerge(FormatRegistry.GetCategory(FormatRegistry.GetExtension(i)), targetExt, FormatRegistry.GetExtension(i)));
-
-        // --set values are checked against what each conversion understands before anything runs.
-        // In a mixed batch a setting only some of the files know (a resolution for the PDFs among
-        // them) applies to those and is left out for the rest.
-        var extensions = inputs.Select(FormatRegistry.GetExtension).Distinct().ToList();
-        var knownSomewhere = extensions.SelectMany(e => CommandLineSettings(e, targetExt, mergeAll)).Select(d => d.Key)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var details = new Dictionary<string, DetailSettings>();
-        foreach (var extension in extensions)
+        if (dryRun)
         {
-            if (ReadSettings(sets, extension, targetExt, mergeAll, knownSomewhere, out var detail) is { } problem)
-            {
-                Console.Error.WriteLine("ERROR: " + problem);
-                return 2;
-            }
-            details[extension] = detail;
-        }
-
-        if (outDir != null) Directory.CreateDirectory(outDir);
-        var options = new ConversionOptions { SizePercent = size, Speed = speed, UseGpu = gpu };
-        var service = new ConversionService();
-
-        if (mergeAll)
-        {
-            Console.WriteLine($"Combining {inputs.Count} files into one .{targetExt} (use --each for separate outputs) …");
-            var merged = options.WithDetail(details[FormatRegistry.GetExtension(inputs[0])]);
-            var produced = await service.ConvertManyAsync(inputs, targetExt, merged, outDir, PercentPrinter(), CancellationToken.None, whenExists);
-            Console.WriteLine(produced != null ? "OK " + produced : "SKIPPED the combined file already exists");
+            var plan = JobRunner.Plan(job!);
+            if (json) PrintJson(AgentJson.Outcome(job!, plan, dryRun: true));
+            else
+                foreach (var file in plan)
+                    Console.WriteLine($"{(file.Status == JobStatus.Skipped ? "WOULD SKIP" : file.Replaces ? "WOULD REPLACE" : "WOULD WRITE")} {file.Output}" +
+                                      (file.MayBecomeFolder ? "  (or a folder of that name: several files)" : ""));
             return 0;
         }
 
-        // Every input starts at once; the service's queues decide how many actually run side by side.
-        var reserved = new HashSet<string>(PlatformServices.PathComparer);
-        var outputs = inputs.Select(input => ConversionService.BuildOutputPath(input, targetExt, outDir, reserved, whenExists)).ToList();
-        var progress = inputs.Count == 1 ? PercentPrinter() : null; // interleaved percentages would be noise
-        int failures = 0;
+        if (job!.Merge && !json)
+            Console.WriteLine($"Combining {job.Inputs.Count} files into one .{job.Target} (use --each for separate outputs) …");
 
-        await Task.WhenAll(inputs.Select(async (input, index) =>
-        {
-            try
-            {
-                if (whenExists == ExistingFileAction.Skip && File.Exists(outputs[index]))
-                {
-                    Console.WriteLine("SKIPPED " + outputs[index] + " already exists");
-                    return;
-                }
-                var result = await service.ConvertAsync(input, outputs[index],
-                    options.WithDetail(details[FormatRegistry.GetExtension(input)]), progress, CancellationToken.None);
-                Console.WriteLine("OK " + result.OutputPath + (result.Note != null ? $"  [{result.Note}]" : ""));
-            }
-            catch (Exception ex)
-            {
-                Interlocked.Increment(ref failures);
-                var message = ex is FriendlyException ? ex.Message : ex.ToString();
-                Console.Error.WriteLine($"ERROR: {Path.GetFileName(input)}: {message}");
-            }
-        }));
-        return failures == 0 ? 0 : 1;
+        var files = await new JobRunner().RunAsync(job, json ? null : PrintFile, PercentPrinter(json ? Console.Error : Console.Out), CancellationToken.None);
+        if (json) PrintJson(AgentJson.Outcome(job, files, dryRun: false));
+        return files.Any(f => f.Status is JobStatus.Failed or JobStatus.Cancelled) ? 1 : 0;
     }
 
-    /// <summary>
-    /// Turns "--set key=value" pairs into the settings of one conversion. Returns what is wrong
-    /// with them, or null: an unknown key or a value outside its range is a mistake to report,
-    /// not something to drop quietly.
-    /// </summary>
-    private static string? ReadSettings(List<string> sets, string sourceExt, string targetExt, bool merging,
-        HashSet<string> knownSomewhere, out DetailSettings detail)
+    /// <summary>A result as a person reads it.</summary>
+    private static void PrintFile(JobFile file)
     {
-        detail = DetailSettings.None;
-        if (sets.Count == 0) return null;
-
-        var definitions = CommandLineSettings(sourceExt, targetExt, merging);
-        var values = new Dictionary<string, string>();
-        foreach (var pair in sets)
+        switch (file.Status)
         {
-            int split = pair.IndexOf('=');
-            if (split <= 0) return $"--set expects key=value, not \"{pair}\".";
-            var key = pair[..split].Trim();
-            var definition = definitions.FirstOrDefault(d => d.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
-            if (definition == null)
-            {
-                if (knownSomewhere.Contains(key)) continue; // meant for another file type in this batch
-                return $".{sourceExt} → .{targetExt} has no setting \"{key}\". It has: " +
-                       (definitions.Count == 0 ? "none" : string.Join(", ", definitions.Select(d => d.Key))) +
-                       $". See --list-settings {sourceExt} {targetExt}";
-            }
-            var value = definition.Normalize(pair[(split + 1)..]);
-            if (value == null) return $"\"{pair[(split + 1)..]}\" is not a valid value for {definition.Key} ({Describe(definition)}).";
-            values[definition.Key] = value;
+            case JobStatus.Converted:
+                Console.WriteLine("OK " + file.Output + (file.Note != null ? $"  [{file.Note}]" : ""));
+                break;
+            case JobStatus.Skipped:
+                Console.WriteLine(file.Output.Length > 0 ? "SKIPPED " + file.Output + " already exists" : "SKIPPED the combined file already exists");
+                break;
+            default:
+                Console.Error.WriteLine($"ERROR: {(file.Inputs.Count == 1 ? Path.GetFileName(file.Inputs[0]) : file.Output)}: {file.Error}");
+                break;
         }
-        detail = new DetailSettings(values);
-        return null;
     }
 
-    /// <summary>What --set accepts for a conversion: the panel's settings, without its own way of choosing among them.</summary>
-    private static List<SettingDefinition> CommandLineSettings(string sourceExt, string targetExt, bool merging = false) =>
-        SettingCatalog.For(sourceExt, targetExt, merging).Where(d => d.OnCommandLine).ToList();
+    private static void PrintJson(JsonObject document) => Console.WriteLine(document.ToJsonString(AgentJson.Indented));
 
-    /// <summary>A setting's explanation as the command line has it: --size and --speed instead of the window's controls.</summary>
-    private static string ForCommandLine(string text) => text
-        .Replace("Speed and the File size slider decide", "--speed and --size decide")
-        .Replace("the File size slider", "--size");
-
-    private static string Describe(SettingDefinition definition) => definition.Kind switch
+    private static int Status(string[] args)
     {
-        SettingKind.Number => $"a number from {definition.Min:0.##} to {definition.Max:0.##}",
-        SettingKind.Choice => "one of: " + string.Join(", ", definition.Choices.Select(c => c.Value)),
-        SettingKind.Secret => "text",
-        _ => "text"
-    };
+        var status = AgentJson.Status();
+        if (args.Contains("--json"))
+        {
+            PrintJson(status);
+            return 0;
+        }
+        Console.WriteLine($"{AppInfo.DisplayName} {Version} ({PlatformServices.Current.Name})");
+        foreach (var (name, engine) in status["engines"]!.AsObject())
+            Console.WriteLine($"  {name,-16} {engine!["path"]?.GetValue<string>() ?? "not found"}");
+        return 0;
+    }
+
+    private static int ListFormats(string[] args)
+    {
+        var names = args.Where(a => !a.StartsWith("--")).Select(a => a.TrimStart('.').ToLowerInvariant()).ToList();
+        bool json = args.Contains("--json");
+        if (names.Count > 1 || (names.Count == 1 && !FormatRegistry.Inputs.Contains(names[0])))
+        {
+            var problem = new JobProblem(JobErrors.UnsupportedConversion, names.Count > 1
+                ? "Usage: --list-formats [<source-ext>], e.g. --list-formats mov"
+                : $".{names[0]} is not a format this app reads.");
+            if (json) PrintJson(AgentJson.Failure(problem));
+            else Console.Error.WriteLine("ERROR: " + problem.Message);
+            return 2;
+        }
+
+        var formats = AgentJson.Formats(names.Count == 1 ? names[0] : null);
+        if (json)
+        {
+            PrintJson(formats);
+            return 0;
+        }
+        foreach (var format in formats["formats"]!.AsArray())
+            Console.WriteLine($"{format!["extension"],-10} {format["category"],-10} {string.Join(", ", format["targets"]!.AsArray().Select(t => t!.GetValue<string>()))}");
+        return 0;
+    }
 
     private static int ListSettings(string[] args)
     {
         var names = args.Where(a => !a.StartsWith("--")).Select(a => a.TrimStart('.').ToLowerInvariant()).ToList();
-        if (names.Count != 2)
+        bool json = args.Contains("--json");
+        int Refuse(JobProblem problem)
         {
-            Console.Error.WriteLine("Usage: --list-settings <source-ext> <target-ext>, e.g. --list-settings mov mp4");
+            if (json) PrintJson(AgentJson.Failure(problem));
+            else Console.Error.WriteLine((problem.Code == JobErrors.BadArguments ? "" : "ERROR: ") + problem.Message);
             return 2;
         }
+        if (names.Count != 2)
+            return Refuse(new JobProblem(JobErrors.BadArguments, "Usage: --list-settings <source-ext> <target-ext>, e.g. --list-settings mov mp4"));
         var targets = FormatRegistry.GetTargets(names[0], rarOutputAvailable: true);
         if (!targets.Contains(names[1]))
+            return Refuse(new JobProblem(JobErrors.UnsupportedConversion,
+                $"cannot convert .{names[0]} to .{names[1]}. Valid targets: {string.Join(", ", targets)}", targets));
+        if (json)
         {
-            Console.Error.WriteLine($"ERROR: cannot convert .{names[0]} to .{names[1]}. Valid targets: {string.Join(", ", targets)}");
-            return 2;
+            PrintJson(AgentJson.SettingsOf(names[0], names[1]));
+            return 0;
         }
 
-        var definitions = CommandLineSettings(names[0], names[1]);
+        var definitions = ConversionJob.SettableSettings(names[0], names[1]);
         Console.WriteLine($"Settings for .{names[0]} → .{names[1]} (use with --set key=value; anything not set is automatic):");
         if (definitions.Count == 0) Console.WriteLine("  none — this conversion has only one way of being done.");
         foreach (var definition in definitions)
         {
-            // the size and quality settings have no default of their own: without one, --size decides
+            // the size and quality settings have no default of their own: without one, --result decides
             var fallback = definition.Mode != null && definition.InPanel ? "not set" : definition.Automatic;
-            Console.WriteLine($"  {definition.Key,-14} {definition.Label} — {Describe(definition)}. Default: {fallback}");
-            Console.WriteLine($"  {"",-14} {ForCommandLine(definition.Help)}");
+            Console.WriteLine($"  {definition.Key,-14} {definition.Label} — {ConversionJob.Describe(definition)}. Default: {fallback}");
+            Console.WriteLine($"  {"",-14} {AgentJson.ForPrograms(definition.Help)}");
         }
 
         // in the window only one of these can be chosen; here the converters' order decides
@@ -466,13 +491,14 @@ public static class CliRunner
     }
 
     /// <summary>Prints "progress N%" in 20 % steps.</summary>
-    private static IProgress<double> PercentPrinter()
+    private static IProgress<double> PercentPrinter(TextWriter? writer = null)
     {
+        writer ??= Console.Out;
         int lastPercent = -1;
         return new Progress<double>(p =>
         {
             int percent = (int)(p * 100);
-            if (percent >= lastPercent + 20) { lastPercent = percent; Console.WriteLine($"progress {percent}%"); }
+            if (percent >= lastPercent + 20) { lastPercent = percent; writer.WriteLine($"progress {percent}%"); }
         });
     }
 }
