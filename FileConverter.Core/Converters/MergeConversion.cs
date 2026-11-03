@@ -182,7 +182,7 @@ public static class MergeConversion
     private static PdfPicture Prepared(string input, int frame, string ext, string tempDir, int index, SpeedPreset speed)
     {
         using var image = ImageConversion.LoadStill(input, ext, frame);
-        bool keepExact = ImageConversion.IsLosslessSource(ext) || image.HasAlpha;
+        bool keepExact = ImageConversion.IsLosslessSource(ext) || (image.HasAlpha && !image.IsOpaque);
         string pageFormat = keepExact ? "png" : "jpg";
         ImageConversion.Normalize(image, pageFormat, strip: false);
         var encoding = new ConversionOptions { Speed = speed };
@@ -220,8 +220,10 @@ public static class MergeConversion
         if (picture == null)
         {
             // a kind of PNG the reader above does not take: plain 8-bit colour is always one it does
+            image.Depth = 8;
             image.Settings.SetDefine(MagickFormat.Png, "color-type", "2");
             image.Settings.SetDefine(MagickFormat.Png, "bit-depth", "8");
+            image.Settings.SetDefine(MagickFormat.Png, "exclude-chunks", "gAMA");
             image.Write(path, MagickFormat.Png);
             picture = PdfPicture.TryPng(path) ?? throw Unreadable(input);
         }
@@ -354,7 +356,7 @@ public static class MergeConversion
         if (!embeddable)
         {
             using var image = ImageConversion.LoadStill(input, ext, frame);
-            bool keepExact = ImageConversion.IsLosslessSource(ext) || image.HasAlpha;
+            bool keepExact = ImageConversion.IsLosslessSource(ext) || (image.HasAlpha && !image.IsOpaque);
             string pageFormat = keepExact ? "png" : "jpg";
             ImageConversion.Normalize(image, pageFormat, strip: false);
 

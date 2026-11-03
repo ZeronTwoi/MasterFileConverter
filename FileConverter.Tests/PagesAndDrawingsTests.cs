@@ -257,7 +257,7 @@ public class PagesAndDrawingsTests(Samples samples) : IClassFixture<Samples>
     [Fact]
     public void PagesAndDrawingsAreOfferedTheirConversionsAndTheirSettings()
     {
-        Assert.Equal(["jpg", "png", "gif", "webp", "bmp", "tiff", "pdf", "zip", "7z"], FormatRegistry.GetTargets("svg", false));
+        Assert.Equal(["jpg", "png", "gif", "webp", "avif", "jxl", "bmp", "tiff", "ico", "tga", "pdf", "zip", "7z"], FormatRegistry.GetTargets("svg", false));
         Assert.Equal(FileCategory.Image, FormatRegistry.GetCategory("svg"));
         Assert.Contains("tiff", FormatRegistry.GetTargets("pdf", false));
         Assert.DoesNotContain("tiff", FormatRegistry.GetTargets("docx", false));

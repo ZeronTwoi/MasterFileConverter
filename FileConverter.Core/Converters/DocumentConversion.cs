@@ -90,7 +90,7 @@ public static class DocumentConversion
         new($"Converting .{src} to .{dst} is not supported.");
 
     /// <summary>The formats an office program reads with their layout, and writes.</summary>
-    private static bool IsOfficeText(string ext) => ext is "docx" or "doc" or "odt" or "rtf";
+    private static bool IsOfficeText(string ext) => ext is "docx" or "doc" or "docm" or "dotx" or "odt" or "rtf";
 
     /// <summary>What a spreadsheet program writes from a workbook with everything in it: its formats, and the printed page.</summary>
     private static bool IsOfficeSheetTarget(string ext) => ext is "pdf" or "xlsx" or "ods";
@@ -113,7 +113,7 @@ public static class DocumentConversion
                 if (src == "doc" || dst == "doc") return true; // the binary format is an office program's to read and to write
                 return IsOfficeText(src) && (IsOfficeText(dst) || dst is "pdf" or "txt");
             case DocumentKind.Sheet:
-                return src != "csv" && IsOfficeSheetTarget(dst);
+                return src is not ("csv" or "tsv") && IsOfficeSheetTarget(dst);
             case DocumentKind.Slides:
                 return dst is "pdf" or "pptx" or "odp";
             default:
@@ -186,14 +186,14 @@ public static class DocumentConversion
                 }
             }
 
-            case "xlsx" or "ods" or "csv":
+            case "xlsx" or "ods" or "csv" or "tsv":
             {
-                // a workbook gets a sheet for every page unless told otherwise; a CSV file is one table, so one sheet
+                // a workbook gets a sheet for every page unless told otherwise; a CSV/TSV file is one table, so one sheet
                 bool sheetPerPage = options.Detail.Text(K.Sheets) switch
                 {
                     "pages" => true,
                     "one" => false,
-                    _ => dst != "csv"
+                    _ => dst is not ("csv" or "tsv")
                 };
                 return WriteSheets(PdfTableReader.ReadFile(input, sheetPerPage, ct), input, output, dst, options);
             }
@@ -209,23 +209,23 @@ public static class DocumentConversion
         ConversionOptions options, CancellationToken ct)
     {
         // A spreadsheet program prints a workbook the way it is set up to be printed, and carries its
-        // formatting, formulas and charts from one format to the other. (Not for CSV: how its numbers
+        // formatting, formulas and charts from one format to the other. (Not for CSV/TSV: how its numbers
         // and letters are to be read is worked out here, where a program would go by the system's settings.)
-        if (src != "csv" && IsOfficeSheetTarget(dst) && await TryOfficeEnginesAsync(input, output, src, dst, options, ct))
+        if (src is not ("csv" or "tsv") && IsOfficeSheetTarget(dst) && await TryOfficeEnginesAsync(input, output, src, dst, options, ct))
             return output;
 
         var workbook = src switch
         {
-            "xlsx" or "xls" => ExcelReader.ReadFile(input),
+            "xlsx" or "xls" or "xlsm" => ExcelReader.ReadFile(input),
             "ods" => OdsReader.ReadFile(input),
-            "csv" => CsvReader.ReadFile(input),
+            "csv" or "tsv" => CsvReader.ReadFile(input),
             _ => throw Unsupported(src, dst)
         };
         ct.ThrowIfCancellationRequested();
         return WriteSheets(workbook, input, output, dst, options);
     }
 
-    /// <summary>Writes a workbook with the built-in writers; returns the file, or the folder of a CSV file per sheet.</summary>
+    /// <summary>Writes a workbook with the built-in writers; returns the file, or the folder of a CSV/TSV file per sheet.</summary>
     private static string WriteSheets(Workbook workbook, string input, string output, string dst, ConversionOptions options)
     {
         var title = Path.GetFileNameWithoutExtension(input);
@@ -234,6 +234,7 @@ public static class DocumentConversion
             case "xlsx": XlsxWriter.Write(workbook, output); break;
             case "ods": OdsWriter.Write(workbook, output); break;
             case "csv": return CsvWriter.Write(workbook, output, options);
+            case "tsv": return CsvWriter.Write(workbook, output, options, '\t');
             case "html": SheetHtmlWriter.Write(workbook, output, title); break;
             case "pdf": SheetPdfWriter.Write(workbook, output, options, title); break;
             default: throw Unsupported(FormatRegistry.GetExtension(input), dst);
@@ -269,7 +270,7 @@ public static class DocumentConversion
             throw new FriendlyException(
                 "Converting legacy .ppt files requires Microsoft PowerPoint or LibreOffice (free, libreoffice.org). Install one and try again.");
 
-        var deck = src == "pptx" ? PptxReader.ReadFile(input) : OdpReader.ReadFile(input);
+        var deck = src is "pptx" or "ppsx" or "potx" or "pptm" ? PptxReader.ReadFile(input) : OdpReader.ReadFile(input);
         ct.ThrowIfCancellationRequested();
         deck.Title ??= Path.GetFileNameWithoutExtension(input);
         switch (dst)
@@ -348,7 +349,7 @@ public static class DocumentConversion
             "md" => MarkdownReader.ReadFile(input),
             "html" => HtmlReader.ReadFile(input),
             "rtf" => RtfReader.ReadFile(input),
-            "docx" => DocxReader.ReadFile(input),
+            "docx" or "docm" or "dotx" => DocxReader.ReadFile(input),
             "odt" => OdtReader.ReadFile(input),
             "epub" => EpubReader.ReadFile(input),
             _ => throw Unsupported(src, dst)

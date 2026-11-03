@@ -42,6 +42,12 @@ public static class ImageConversion
     /// <summary>Lossy WebP quality at the 100 % slider position (used when the source is itself lossy).</summary>
     private const uint WebPTopQuality = 96;
 
+    /// <summary>Lossy AVIF quality at the 100 % slider position (used when the source is itself lossy).</summary>
+    private const uint AvifTopQuality = 92;
+
+    /// <summary>Lossy JPEG XL quality at the 100 % slider position (used when the source is itself lossy).</summary>
+    private const uint JxlTopQuality = 92;
+
     public static Task<ConversionResult> ConvertAsync(string input, string output, ConversionOptions options,
         IProgress<double>? progress, CancellationToken ct) =>
         Task.Run(() => Convert(input, output, options, progress, ct), ct);
@@ -110,7 +116,7 @@ public static class ImageConversion
     private static long TargetBytes(long sourceBytes, string dst, ConversionOptions options)
     {
         var detail = options.Detail;
-        if (dst is "jpg" or "webp")
+        if (dst is "jpg" or "webp" or "avif" or "jxl")
         {
             if (detail.Number(K.TargetSizeKb) is { } kilobytes and > 0) return (long)(kilobytes * 1024);
             if (detail.Has(K.Quality) || detail.Flag(K.Lossless) == true) return long.MaxValue;
@@ -135,7 +141,8 @@ public static class ImageConversion
     }
 
     /// <summary>Formats that store pixels exactly — re-saving them losslessly is worth it. (A drawing has no pixels to lose.)</summary>
-    internal static bool IsLosslessSource(string src) => src is "png" or "bmp" or "gif" or "tif" or "tiff" or "ico" or "svg";
+    internal static bool IsLosslessSource(string src) =>
+        src is "png" or "apng" or "bmp" or "gif" or "tif" or "tiff" or "ico" or "svg" or "tga" or "psd";
 
     // ---------- still images ----------
 
@@ -162,7 +169,7 @@ public static class ImageConversion
             return exact;
         }
 
-        if (dst is "jpg" or "webp")
+        if (dst is "jpg" or "webp" or "avif" or "jxl")
         {
             var best = FitQuality(image, format, targetBytes, ct);
             File.WriteAllBytes(output, best);
@@ -354,8 +361,14 @@ public static class ImageConversion
         // Most viewers ignore the orientation tag outside JPEG, so turn the pixels themselves.
         image.AutoOrient();
 
-        bool carriesProfile = dst is "jpg" or "png" or "webp" or "tiff";
-        if (image.ColorSpace == ColorSpace.CMYK && (strip || dst is not ("jpg" or "tiff")))
+        bool carriesProfile = dst is "jpg" or "png" or "webp" or "avif" or "jxl" or "tiff";
+        if (image.ColorSpace is ColorSpace.RGB or ColorSpace.scRGB)
+        {
+            // linear-light HDR formats (EXR) → standard sRGB
+            image.ColorSpace = ColorSpace.sRGB;
+            untouched = false;
+        }
+        else if (image.ColorSpace == ColorSpace.CMYK && (strip || dst is not ("jpg" or "tiff")))
         {
             // print colours → screen colours through ICC profiles, not a naive channel flip
             if (!image.TransformColorSpace(ColorProfiles.USWebCoatedSWOP, ColorProfiles.SRGB))
@@ -752,6 +765,46 @@ public static class ImageConversion
                 image.Settings.SetDefines(webp);
                 return false;
 
+            case "avif":
+                bool avifLossless = detail.Flag(K.Lossless) ?? (quality == null && !sizeTargeted && losslessSource);
+                int avifSpeed = speed switch
+                {
+                    SpeedPreset.Fastest => 8,
+                    SpeedPreset.Fast => 7,
+                    SpeedPreset.Balanced => 6,
+                    _ => 4
+                };
+                image.Settings.SetDefine(MagickFormat.Heic, "speed", avifSpeed.ToString());
+                if (avifLossless)
+                {
+                    image.Quality = 100;
+                    image.Settings.SetDefine(MagickFormat.Heic, "lossless", "true");
+                    image.Settings.SetDefine(MagickFormat.Heic, "chroma", "444");
+                    return true;
+                }
+                if (quality is { } avifQuality) image.Quality = (uint)avifQuality;
+                else if (!sizeTargeted) image.Quality = AvifTopQuality;
+                return false;
+
+            case "jxl":
+                bool jxlLossless = detail.Flag(K.Lossless) ?? (quality == null && !sizeTargeted && losslessSource);
+                int jxlEffort = speed switch
+                {
+                    SpeedPreset.Fastest => 3,
+                    SpeedPreset.Fast => 5,
+                    SpeedPreset.Balanced => 7,
+                    _ => 8
+                };
+                image.Settings.SetDefine(MagickFormat.Jxl, "effort", jxlEffort.ToString());
+                if (jxlLossless)
+                {
+                    image.Quality = 100;
+                    return true;
+                }
+                if (quality is { } jxlQuality) image.Quality = (uint)jxlQuality;
+                else if (!sizeTargeted) image.Quality = JxlTopQuality;
+                return false;
+
             case "png":
                 // always pixel-exact; how hard the compressor works is PngLevelFor's choice
                 image.Settings.SetDefine(MagickFormat.Png, "compression-level", PngLevelFor(options).ToString());
@@ -760,6 +813,7 @@ public static class ImageConversion
             case "tiff":
                 // Always lossless; never inherit a lossy JPEG-in-TIFF mode from the source.
                 // LZW with a horizontal predictor makes photos ~5× smaller than uncompressed for under a second.
+                if (image.Depth is not (8 or 16)) image.Depth = image.Depth < 8 ? 8u : 16u;
                 image.Settings.Compression = detail.Text(K.Compression) switch
                 {
                     "none" => CompressionMethod.NoCompression,
@@ -775,6 +829,19 @@ public static class ImageConversion
             case "bmp":
                 return image.Depth <= 8;
 
+            case "ico":
+                // the icon format cannot hold a picture wider or taller than 256 pixels
+                if (image.Width > 256 || image.Height > 256)
+                {
+                    image.Resize(new MagickGeometry(256, 256));
+                    return false;
+                }
+                return image.Depth <= 8;
+
+            case "tga":
+                image.Settings.Compression = speed == SpeedPreset.Fastest ? CompressionMethod.NoCompression : CompressionMethod.RLE;
+                return image.Depth <= 8;
+
             default:
                 return false;
         }
@@ -786,8 +853,12 @@ public static class ImageConversion
         "png" => MagickFormat.Png,
         "gif" => MagickFormat.Gif,
         "webp" => MagickFormat.WebP,
+        "avif" => MagickFormat.Avif,
+        "jxl" => MagickFormat.Jxl,
         "bmp" => MagickFormat.Bmp,
         "tiff" => MagickFormat.Tiff,
+        "ico" => MagickFormat.Ico,
+        "tga" => MagickFormat.Tga,
         _ => throw new FriendlyException($"Unsupported image format: {ext}")
     };
 }

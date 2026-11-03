@@ -37,7 +37,7 @@ public static class MediaConversion
                     await FrameExtraction.VideoToFramesAsync(input, output, dst, info, options, progress, ct));
         }
 
-        if (dst is "mp3" or "wav" or "flac" or "aac" or "m4a" or "ogg" or "opus")
+        if (dst is "mp3" or "wav" or "aiff" or "flac" or "aac" or "m4a" or "ogg" or "opus" or "ac3")
         {
             using (await gates.EnterAsync(JobWeight.Light, ct))
                 return await ConvertToAudioAsync(input, output, dst, info, srcBytes, options, progress, ct);
@@ -102,7 +102,7 @@ public static class MediaConversion
 
         var encode = AudioEncoderArgs(dst, source, info.DurationSeconds, srcBytes, options);
         await FfmpegRunner.RunAsync([.. head, .. encode, output], info.DurationSeconds, progress, ct);
-        return new ConversionResult(output, dst is "wav" or "flac" && source.IsLossless && !reshaped ? "lossless" : null);
+        return new ConversionResult(output, dst is "wav" or "aiff" or "flac" && source.IsLossless && !reshaped ? "lossless" : null);
     }
 
     /// <summary>Is the source's audio already in the target format, so it can be re-wrapped untouched?</summary>
@@ -114,7 +114,9 @@ public static class MediaConversion
         "m4a" => source.Codec is "aac" or "alac",
         "ogg" => source.Codec == "vorbis",
         "opus" => source.Codec == "opus",
+        "ac3" => source.Codec == "ac3",
         "wav" => source.Codec is "pcm_u8" or "pcm_s16le" or "pcm_s24le" or "pcm_s32le" or "pcm_f32le" or "pcm_f64le",
+        "aiff" => source.Codec is "pcm_s8" or "pcm_s16be" or "pcm_s24be" or "pcm_s32be" or "pcm_f32be" or "pcm_f64be",
         _ => false
     };
 
@@ -123,7 +125,7 @@ public static class MediaConversion
     {
         var detail = options.Detail;
         var args = new List<string>();
-        bool lossless = dst is "wav" or "flac";
+        bool lossless = dst is "wav" or "aiff" or "flac";
 
         // In order of precedence: an exact size, a chosen bitrate, the size slider.
         string? targetBitrate = null;
@@ -201,6 +203,27 @@ public static class MediaConversion
                 }]);
                 break;
 
+            case "aiff":
+                args.AddRange(["-c:a", detail.Text(K.BitDepth) switch
+                {
+                    "16" => "pcm_s16be",
+                    "24" => "pcm_s24be",
+                    "32" => "pcm_f32be",
+                    _ => AiffCodecFor(source)
+                }]);
+                break;
+
+            case "ac3":
+                int ac3Channels = ChannelCount(detail) ?? Math.Min(source.Channels, 6);
+                string ac3Bitrate = targetBitrate != null
+                    ? $"{Math.Clamp(int.Parse(targetBitrate.TrimEnd('k'), CultureInfo.InvariantCulture), 96, 640)}k"
+                    : $"{(ac3Channels > 2 ? 448 : 192)}k";
+                args.AddRange(["-c:a", "ac3", "-b:a", ac3Bitrate]);
+                if (source.Channels > 6 && !detail.Has(K.Channels)) args.AddRange(["-ac", "6"]);
+                if (!detail.Has(K.SampleRate) && source.SampleRate is not (32000 or 44100 or 48000))
+                    args.AddRange(["-ar", "48000"]);
+                break;
+
             default:
                 throw new FriendlyException($"Unsupported audio format: {dst}");
         }
@@ -228,6 +251,19 @@ public static class MediaConversion
             "flt" or "fltp" => "pcm_f32le",
             "dbl" or "dblp" => "pcm_f64le",
             _ => source.BitsPerSample is > 0 and <= 24 ? "pcm_s24le" : "pcm_s32le"
+        };
+    }
+
+    private static string AiffCodecFor(AudioStream source)
+    {
+        if (!source.IsLossless) return "pcm_s16be";
+        return source.SampleFormat switch
+        {
+            "u8" or "u8p" => "pcm_s8",
+            "s16" or "s16p" => "pcm_s16be",
+            "flt" or "fltp" => "pcm_f32be",
+            "dbl" or "dblp" => "pcm_f64be",
+            _ => source.BitsPerSample is > 0 and <= 24 ? "pcm_s24be" : "pcm_s32be"
         };
     }
 

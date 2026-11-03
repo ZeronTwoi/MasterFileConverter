@@ -66,7 +66,7 @@ public static class FrameExtraction
                 if (sized && !resized && options.SizePercent < 95)
                     frame.Resize(new Percentage(Math.Sqrt(options.SizePercent / 100.0) * 100));
                 ImageConversion.ApplyEncoderSettings(frame, dst, ImageConversion.IsLosslessSource(src), options, sized);
-                if (sized && dst is "jpg" or "webp") frame.Quality = 85;
+                if (sized && dst is "jpg" or "webp" or "avif" or "jxl") frame.Quality = 85;
 
                 ImageConversion.Save(frame, Path.Combine(folder, $"{baseName} {(i + 1).ToString($"D{digits}")}.{dst}"), dst);
                 progress?.Report((double)Interlocked.Increment(ref done) / list.Count);

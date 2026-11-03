@@ -270,4 +270,57 @@ public class ImageSettingsTests(Samples samples) : IClassFixture<Samples>
         using var image = new MagickImage(result.OutputPath);
         Assert.InRange((int)image.TotalColors, 2, 8);
     }
+
+    [Fact]
+    public async Task AvifConvertsToAndFromWithLosslessAndLossyModes()
+    {
+        var losslessAvif = await samples.ConvertAsync(samples.Png, "avif");
+        var lossyAvif = await samples.ConvertAsync(samples.Png, "avif", (K.Lossless, "false"), (K.Quality, "60"));
+
+        Assert.Equal("lossless", losslessAvif.Note);
+        Assert.Null(lossyAvif.Note);
+        Assert.True(Samples.Size(lossyAvif.OutputPath) < Samples.Size(losslessAvif.OutputPath));
+
+        var roundTripPng = await samples.ConvertAsync(losslessAvif.OutputPath, "png");
+        using var decoded = new MagickImage(roundTripPng.OutputPath);
+        Assert.Equal(MagickFormat.Png, decoded.Format);
+    }
+
+    [Fact]
+    public async Task JxlIcoAndTgaConvertCleanly()
+    {
+        var losslessJxl = await samples.ConvertAsync(samples.Png, "jxl");
+        var lossyJxl = await samples.ConvertAsync(samples.Png, "jxl", (K.Lossless, "false"), (K.Quality, "60"));
+        Assert.Equal("lossless", losslessJxl.Note);
+        Assert.Null(lossyJxl.Note);
+        Assert.True(Samples.Size(lossyJxl.OutputPath) < Samples.Size(losslessJxl.OutputPath));
+
+        var ico = await samples.ConvertAsync(samples.Png, "ico");
+        using (var decodedIco = new MagickImage(ico.OutputPath))
+        {
+            Assert.True(decodedIco.Width <= 256 && decodedIco.Height <= 256);
+        }
+
+        var tga = await samples.ConvertAsync(samples.Png, "tga");
+        var backFromTga = await samples.ConvertAsync(tga.OutputPath, "png");
+        using var decodedTga = new MagickImage(backFromTga.OutputPath);
+        Assert.Equal(MagickFormat.Png, decodedTga.Format);
+    }
+
+    [Fact]
+    public async Task ExrConvertsToPdf()
+    {
+        var exrPath = Path.Combine(samples.NewOutputFolder(), "photo.exr");
+        using (var image = new MagickImage("gradient:#2f6fd0-#f2c14e", new MagickReadSettings { Width = 320, Height = 240 }))
+        {
+            new ImageMagick.Drawing.Drawables()
+                .FillColor(new MagickColor("#d0443c")).Rectangle(30, 40, 130, 130)
+                .FillColor(new MagickColor("#3fb68b")).Ellipse(220, 150, 60, 45, 0, 360)
+                .Draw(image);
+            image.Write(exrPath, MagickFormat.Exr);
+        }
+
+        var pdf = await samples.ConvertAsync(exrPath, "pdf");
+        Assert.True(File.Exists(pdf.OutputPath));
+    }
 }

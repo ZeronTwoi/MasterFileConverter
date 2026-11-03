@@ -215,7 +215,7 @@ public static class ArchiveConversion
         if (sourceExt == "zip" && await Task.Run(() => TryExtractZip(input, destination, progress, ct), ct))
             return false;
 
-        if (sourceExt is "gz" or "tgz" or "bz2")
+        if (sourceExt is "gz" or "tgz" or "bz2" or "xz" or "txz")
         {
             await Task.Run(() => ExtractCompressedFile(input, sourceExt, destination, progress, ct), ct);
             return false;
@@ -279,16 +279,19 @@ public static class ArchiveConversion
         IProgress<double>? progress, CancellationToken ct)
     {
         var innerName = Path.GetFileNameWithoutExtension(input);
-        if (sourceExt == "tgz") innerName += ".tar";
+        if (sourceExt is "tgz" or "txz") innerName += ".tar";
         if (innerName.Length == 0) innerName = "content";
 
         var inner = Path.Combine(destination, innerName);
         try
         {
             using var source = File.OpenRead(input);
-            using Stream decompressed = sourceExt == "bz2"
-                ? new SharpCompress.Compressors.BZip2.BZip2Stream(source, SharpCompress.Compressors.CompressionMode.Decompress, false)
-                : new GZipStream(source, CompressionMode.Decompress);
+            using Stream decompressed = sourceExt switch
+            {
+                "bz2" => new SharpCompress.Compressors.BZip2.BZip2Stream(source, SharpCompress.Compressors.CompressionMode.Decompress, false),
+                "xz" or "txz" => new SharpCompress.Compressors.Xz.XZStream(source),
+                _ => new GZipStream(source, CompressionMode.Decompress)
+            };
             using var target = File.Create(inner);
 
             var buffer = new byte[1 << 16];
@@ -301,7 +304,7 @@ public static class ArchiveConversion
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or SharpCompress.Common.ArchiveException)
         {
-            throw new FriendlyException("The archive is damaged or is not a gzip/bzip2 file.");
+            throw new FriendlyException("The archive is damaged or is not a valid compressed file.");
         }
         progress?.Report(0.2);
 

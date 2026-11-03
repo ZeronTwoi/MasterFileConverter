@@ -117,9 +117,9 @@ public sealed record SettingDefinition(string Key, string Label, SettingKind Kin
 /// </summary>
 public static class SettingCatalog
 {
-    private static readonly string[] ImageTargets = ["jpg", "png", "webp", "bmp", "tiff"];
+    private static readonly string[] ImageTargets = ["jpg", "png", "webp", "avif", "jxl", "bmp", "tiff", "ico", "tga"];
     private static readonly string[] VideoTargets = ["mp4", "mkv", "mov", "webm", "avi"];
-    private static readonly string[] AudioTargets = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus"];
+    private static readonly string[] AudioTargets = ["mp3", "wav", "aiff", "flac", "aac", "m4a", "ogg", "opus", "ac3"];
     private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "rar"];
 
     /// <summary>The kind of result a target format is; presets are kept per kind.</summary>
@@ -192,7 +192,7 @@ public static class SettingCatalog
                 Help = "Which pages to turn into drawings, for example 1-3, 7, 10- (page 10 to the end). Every page becomes a file of its own."
             });
         }
-        else if (target is "xlsx" or "ods" or "csv")
+        else if (target is "xlsx" or "ods" or "csv" or "tsv")
         {
             if (sourceExtension == "pdf") TablesFromPdf(list, target);
             if (target == "csv") CsvSeparator(list);
@@ -215,7 +215,7 @@ public static class SettingCatalog
     private static bool SliderApplies(FileCategory source, string sourceExtension, string target) => target switch
     {
         _ when ImageTargets.Contains(target) || target == "gif" || VideoTargets.Contains(target) => true,
-        "mp3" or "aac" or "m4a" or "ogg" or "opus" => true,
+        "mp3" or "aac" or "m4a" or "ogg" or "opus" or "ac3" => true,
         "pdf" => source == FileCategory.Image && sourceExtension != "svg",
         _ => false
     };
@@ -312,21 +312,22 @@ public static class SettingCatalog
     /// <param name="exactSize">The conversion can aim at a size in kilobytes (pages of a PDF cannot).</param>
     private static void Picture(List<SettingDefinition> list, string target, bool resize, bool metadata, bool exactSize = true)
     {
-        if (target is "jpg" or "webp")
+        if (target is "jpg" or "webp" or "avif" or "jxl")
         {
             var ways = new List<(string, string)>();
-            if (target == "webp") ways.Add((SizeModes.Lossless, "Lossless (every pixel kept)"));
+            if (target is "webp" or "avif" or "jxl") ways.Add((SizeModes.Lossless, "Lossless (every pixel kept)"));
             ways.Add((SizeModes.Quality, FixedQuality));
             if (exactSize) ways.Add((SizeModes.Size, ExactSize));
             list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
                 "How small the picture is made. The File size slider decides for every format, " +
-                (target == "webp" ? "and keeps a picture from a lossless source lossless at 100 %. " : "") +
+                (target is "webp" or "avif" or "jxl" ? "and keeps a picture from a lossless source lossless at 100 %. " : "") +
                 "Choose another way to set it for this format alone.", ways.ToArray()));
-            if (target == "webp")
+            if (target is "webp" or "avif" or "jxl")
             {
                 // the "Lossless" way above, under the name scripts know it by
+                var formatName = target switch { "avif" => "AVIF", "jxl" => "JPEG XL", _ => "WebP" };
                 list.Add(Choice(K.Lossless, "Lossless", SizeAndQuality, "Auto (from the source)",
-                    "Lossless WebP keeps every pixel exactly, like PNG, and is usually smaller than PNG. Lossy WebP is far smaller for photos.",
+                    $"Lossless {formatName} keeps every pixel exactly, like PNG, and is usually smaller than PNG. Lossy {formatName} is far smaller for photos.",
                     ("on", "Always lossless"), ("off", "Always lossy")) with { Mode = SizeModes.Lossless, InPanel = false });
             }
             list.Add(new(K.Quality, "Quality", SettingKind.Number)
@@ -373,7 +374,7 @@ public static class SettingCatalog
 
         if (resize) Resize(list, upscale: true);
 
-        if (metadata && target is "jpg" or "png" or "webp" or "tiff")
+        if (metadata && target is "jpg" or "png" or "webp" or "avif" or "jxl" or "tiff")
         {
             list.Add(Choice(K.Metadata, "Photo information", "Other", "Auto (keep)",
                 "Camera, date and location data stored inside the picture (EXIF/XMP). The colour profile is handled either way.",
@@ -627,7 +628,7 @@ public static class SettingCatalog
 
     private static void Audio(List<SettingDefinition> list, string target)
     {
-        bool lossy = target is "mp3" or "aac" or "m4a" or "ogg" or "opus";
+        bool lossy = target is "mp3" or "aac" or "m4a" or "ogg" or "opus" or "ac3";
         if (lossy)
         {
             var ways = new List<(string, string)>();
@@ -658,7 +659,7 @@ public static class SettingCatalog
             list.Add(new(K.AudioBitrate, "Bitrate (kbps)", SettingKind.Number)
             {
                 Group = SizeAndQuality, Min = 8, Max = 640, Reencodes = true, Mode = SizeModes.Bitrate,
-                Suggested = target == "opus" ? "160" : "256", Automatic = "Kilobits per second",
+                Suggested = target switch { "opus" => "160", "ac3" => "192", _ => "256" }, Automatic = "Kilobits per second",
                 Help = "A fixed average bitrate: 320 is the most MP3 allows, 192 is transparent for most music, 64–96 is enough for speech." +
                        EmptyMeansSlider
             });
@@ -680,16 +681,22 @@ public static class SettingCatalog
                 Help = "0 (fastest) to 12 (smallest). FLAC is always lossless: this never changes the sound."
             });
         }
-        if (target is "wav" or "flac")
+        if (target is "wav" or "aiff" or "flac")
         {
-            var depths = target == "wav"
+            var depths = target is "wav" or "aiff"
                 ? new[] { ("16", "16-bit"), ("24", "24-bit"), ("32", "32-bit float") }
                 : [("16", "16-bit"), ("24", "24-bit")];
             list.Add(Choice(K.BitDepth, "Bit depth", group, "Auto (as the source)",
                 "16-bit is CD quality and plays everywhere; 24-bit keeps studio recordings exact.", depths) with { Reencodes = true });
         }
-        // Opus has no sample rate to choose: it always works at 48 kHz
-        if (target != "opus")
+        // Opus has no sample rate to choose: it always works at 48 kHz; AC-3 supports 32/44.1/48 kHz
+        if (target == "ac3")
+        {
+            list.Add(Choice(K.SampleRate, "Sample rate", group, "Auto (as the source)",
+                "Dolby Digital (AC-3) supports 32 000, 44 100 and 48 000 Hz.",
+                ("32000", "32 000 Hz"), ("44100", "44 100 Hz"), ("48000", "48 000 Hz")) with { Reencodes = true });
+        }
+        else if (target != "opus")
         {
             list.Add(Choice(K.SampleRate, "Sample rate", group, "Auto (as the source)",
                 "44100 Hz is CD quality, 48000 Hz is the standard for video. Lower rates make speech recordings smaller.",
@@ -772,13 +779,16 @@ public static class SettingCatalog
         });
     }
 
-    private static void TablesFromPdf(List<SettingDefinition> list, string target) =>
-        list.Add(Choice(K.Sheets, "Pages", "Tables", target == "csv" ? "Auto (all in one file)" : "Auto (a sheet for every page)",
-            target == "csv"
-                ? "A CSV file holds one table. All pages can go into it one below the other, or every page into a file of its own."
+    private static void TablesFromPdf(List<SettingDefinition> list, string target)
+    {
+        bool singleTable = target is "csv" or "tsv";
+        list.Add(Choice(K.Sheets, "Pages", "Tables", singleTable ? "Auto (all in one file)" : "Auto (a sheet for every page)",
+            singleTable
+                ? $"A {target.ToUpperInvariant()} file holds one table. All pages can go into it one below the other, or every page into a file of its own."
                 : "Every page of the PDF can get a sheet of its own, or all pages go onto one sheet, one below the other.",
-            ("pages", target == "csv" ? "A file for every page" : "A sheet for every page"),
-            ("one", target == "csv" ? "All in one file" : "All on one sheet")));
+            ("pages", singleTable ? "A file for every page" : "A sheet for every page"),
+            ("one", singleTable ? "All in one file" : "All on one sheet")));
+    }
 
     private static void CsvSeparator(List<SettingDefinition> list) =>
         list.Add(Choice(K.Separator, "Separator", "Tables", "Auto (comma)",

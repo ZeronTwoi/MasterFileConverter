@@ -34,25 +34,35 @@ public enum DocumentKind
 /// </summary>
 public static class FormatRegistry
 {
-    private static readonly string[] ImageInputs = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "heic", "ico", "svg"];
-    private static readonly string[] ImageOutputs = ["jpg", "png", "gif", "webp", "bmp", "tiff"];
+    private static readonly string[] ImageInputs =
+    [
+        "jpg", "jpeg", "jfif", "jpe", "png", "apng", "gif", "webp", "avif", "jxl",
+        "bmp", "tif", "tiff", "heic", "heif", "ico", "svg", "tga", "psd", "dds", "hdr", "exr"
+    ];
+    private static readonly string[] ImageOutputs = ["jpg", "png", "gif", "webp", "avif", "jxl", "bmp", "tiff", "ico", "tga"];
 
-    private static readonly string[] AudioInputs = ["mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "opus"];
-    private static readonly string[] AudioOutputs = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus"];
+    private static readonly string[] AudioInputs =
+    [
+        "mp3", "wav", "aiff", "aif", "flac", "aac", "ogg", "oga", "m4a", "m4b", "wma", "opus", "ac3", "eac3", "mka"
+    ];
+    private static readonly string[] AudioOutputs = ["mp3", "wav", "aiff", "flac", "aac", "m4a", "ogg", "opus", "ac3"];
 
-    private static readonly string[] VideoInputs = ["mp4", "mkv", "avi", "webm", "mov", "wmv", "flv", "ts", "m4v"];
+    private static readonly string[] VideoInputs =
+    [
+        "mp4", "mkv", "avi", "webm", "mov", "wmv", "flv", "ts", "mts", "m2ts", "m4v", "mpg", "mpeg", "vob", "3gp", "ogv"
+    ];
     private static readonly string[] VideoOutputs = ["mp4", "mkv", "avi", "webm", "mov"];
 
-    private static readonly string[] TextDocuments = ["txt", "md", "log", "rtf", "html", "htm", "docx", "doc", "odt", "epub"];
-    private static readonly string[] Spreadsheets = ["xlsx", "xls", "ods", "csv"];
-    private static readonly string[] Presentations = ["pptx", "ppt", "odp"];
+    private static readonly string[] TextDocuments = ["txt", "md", "markdown", "log", "rtf", "html", "htm", "docx", "doc", "docm", "dotx", "odt", "epub"];
+    private static readonly string[] Spreadsheets = ["xlsx", "xls", "xlsm", "ods", "csv", "tsv", "tab"];
+    private static readonly string[] Presentations = ["pptx", "ppt", "ppsx", "pps", "potx", "pptm", "odp"];
     private static readonly string[] Drawings = ["odg", "pub"];
     private static readonly string[] DocumentInputs = ["pdf", .. TextDocuments, .. Spreadsheets, .. Presentations, .. Drawings];
 
     /// <summary>What running text can be written as, the most asked-for first (the first is what a new file is set to).</summary>
     private static readonly string[] TextOutputs = ["pdf", "docx", "odt", "rtf", "txt", "html", "md", "epub", "doc"];
 
-    private static readonly string[] ArchiveInputs = ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2"];
+    private static readonly string[] ArchiveInputs = ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz", "txz"];
 
     /// <summary>Every file type the app reads: what the Windows installer lists it under "Open with" for.</summary>
     public static IReadOnlyList<string> Inputs { get; } =
@@ -83,13 +93,24 @@ public static class FormatRegistry
         return DocumentKind.None;
     }
 
-    /// <summary>jpg and jpeg (tif/tiff, htm/html) are the same format under two names: the one it is known by here.</summary>
+    /// <summary>jpg and jpeg (tif/tiff, htm/html, etc.) are the same format under two names: the one it is known by here.</summary>
     public static string Canonical(string ext) => ext switch
     {
-        "jpeg" => "jpg",
+        "jpeg" or "jfif" or "jpe" => "jpg",
         "tif" => "tiff",
+        "heif" => "heic",
+        "apng" => "png",
         "tgz" => "gz",
+        "txz" => "xz",
         "htm" => "html",
+        "markdown" => "md",
+        "tab" => "tsv",
+        "aif" => "aiff",
+        "m4b" => "m4a",
+        "oga" => "ogg",
+        "mts" or "m2ts" => "ts",
+        "mpeg" or "vob" => "mpg",
+        "pps" => "ppt",
         _ => ext
     };
 
@@ -114,7 +135,7 @@ public static class FormatRegistry
 
             case FileCategory.Video:
                 targets.AddRange(VideoOutputs.Where(t => t != ext));
-                targets.AddRange(["mp3", "wav", "flac", "aac", "m4a"]); // extract audio
+                targets.AddRange(["mp3", "wav", "aiff", "flac", "aac", "m4a", "ogg", "opus", "ac3"]); // extract audio
                 targets.Add("gif");
                 targets.AddRange(["png", "jpg"]); // frame sequence
                 break;
@@ -164,7 +185,7 @@ public static class FormatRegistry
         {
             case DocumentKind.Pdf:
                 // back into something that can be edited, its text and structure in another form, or its tables
-                foreach (var target in new[] { "docx", "xlsx", "pptx", "txt", "html", "md", "rtf", "odt", "ods", "odp", "csv", "epub", "doc" }) yield return target;
+                foreach (var target in new[] { "docx", "xlsx", "pptx", "txt", "html", "md", "rtf", "odt", "ods", "odp", "csv", "tsv", "epub", "doc" }) yield return target;
                 break;
 
             case DocumentKind.Slides:
@@ -179,7 +200,7 @@ public static class FormatRegistry
 
             case DocumentKind.Sheet:
                 // (the old binary .xls is read, not written)
-                foreach (var target in new[] { "pdf", "xlsx", "ods", "csv", "html" })
+                foreach (var target in new[] { "pdf", "xlsx", "ods", "csv", "tsv", "html" })
                     if (target != ext) yield return target;
                 break;
 

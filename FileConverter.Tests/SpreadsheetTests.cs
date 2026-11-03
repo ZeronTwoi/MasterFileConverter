@@ -444,8 +444,8 @@ public class SpreadsheetTests(Samples samples) : IClassFixture<Samples>
     [Fact]
     public void SpreadsheetsAreOfferedTheirConversionsAndTheirSettings()
     {
-        Assert.Equal(["pdf", "ods", "csv", "html", "png", "jpg", "zip", "7z"], FormatRegistry.GetTargets("xlsx", false));
-        Assert.Equal(["pdf", "xlsx", "ods", "html", "png", "jpg", "zip", "7z"], FormatRegistry.GetTargets("csv", false));
+        Assert.Equal(["pdf", "ods", "csv", "tsv", "html", "png", "jpg", "zip", "7z"], FormatRegistry.GetTargets("xlsx", false));
+        Assert.Equal(["pdf", "xlsx", "ods", "tsv", "html", "png", "jpg", "zip", "7z"], FormatRegistry.GetTargets("csv", false));
         Assert.Contains("xlsx", FormatRegistry.GetTargets("xls", false));
         Assert.DoesNotContain("xls", FormatRegistry.GetTargets("xlsx", false)); // the old format is read, not written
         Assert.Contains("xlsx", FormatRegistry.GetTargets("pdf", false));

@@ -266,9 +266,16 @@ public static class SelfTest
         });
         yield return Still("jpg", MagickFormat.Jpeg);
         yield return Still("webp", MagickFormat.WebP);
+        yield return Still("avif", MagickFormat.Avif);
+        yield return Still("jxl", MagickFormat.Jxl);
         yield return Still("bmp", MagickFormat.Bmp);
         yield return Still("tiff", MagickFormat.Tiff);
         yield return Still("gif", MagickFormat.Gif);
+        yield return Still("tga", MagickFormat.Tga);
+        yield return Still("psd", MagickFormat.Psd);
+        yield return Still("dds", MagickFormat.Dds);
+        yield return Still("hdr", MagickFormat.Hdr);
+        yield return Still("exr", MagickFormat.Exr);
         yield return ReadyMade("heic", HeicPicture);
 
         // a drawing: shapes, a gradient, a line of text, and nothing behind them
@@ -332,8 +339,8 @@ public static class SelfTest
     private static async Task<List<Sample>> CreateMediaSamplesAsync(string dir, CancellationToken ct)
     {
         var samples = new List<Sample>();
-        string[] audioFormats = ["wav", "mp3", "flac", "aac", "ogg", "m4a", "wma", "opus"];
-        string[] videoFormats = ["mp4", "mkv", "avi", "webm", "mov", "wmv", "flv", "ts", "m4v"];
+        string[] audioFormats = ["wav", "aiff", "mp3", "flac", "aac", "ogg", "m4a", "wma", "opus", "ac3", "eac3", "mka"];
+        string[] videoFormats = ["mp4", "mkv", "avi", "webm", "mov", "wmv", "flv", "ts", "m4v", "mpg", "3gp", "ogv"];
 
         if (ToolLocator.FfmpegPath == null)
         {
@@ -355,6 +362,7 @@ public static class SelfTest
 
         string[] audioIn = ["-f", "lavfi", "-i", tone, "-ac", "2"];
         await Make("wav", [.. audioIn, "-c:a", "pcm_s16le"]);
+        await Make("aiff", [.. audioIn, "-c:a", "pcm_s16be"]);
         await Make("mp3", [.. audioIn, "-c:a", "libmp3lame", "-b:a", "128k"]);
         await Make("flac", [.. audioIn, "-c:a", "flac"]);
         await Make("aac", [.. audioIn, "-c:a", "aac", "-b:a", "128k"]);
@@ -362,6 +370,9 @@ public static class SelfTest
         await Make("m4a", [.. audioIn, "-c:a", "aac", "-b:a", "128k"]);
         await Make("wma", [.. audioIn, "-c:a", "wmav2", "-b:a", "128k"]);
         await Make("opus", [.. audioIn, "-ar", "48000", "-c:a", "libopus"]);
+        await Make("ac3", [.. audioIn, "-c:a", "ac3", "-b:a", "192k"]);
+        await Make("eac3", [.. audioIn, "-c:a", "eac3", "-b:a", "192k"]);
+        await Make("mka", [.. audioIn, "-c:a", "flac"]);
 
         string[] videoIn = ["-f", "lavfi", "-i", picture, "-f", "lavfi", "-i", tone, "-shortest", "-pix_fmt", "yuv420p"];
         string[] h264 = ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-b:a", "96k"];
@@ -369,12 +380,15 @@ public static class SelfTest
         await Make("mkv", [.. videoIn, .. h264]);
         await Make("mov", [.. videoIn, .. h264]);
         await Make("m4v", [.. videoIn, .. h264]);
+        await Make("3gp", [.. videoIn, .. h264]);
         await Make("avi", [.. videoIn, "-c:v", "mpeg4", "-q:v", "4", "-c:a", "libmp3lame", "-b:a", "128k"]);
         await Make("webm", [.. videoIn, "-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-crf", "30", "-b:v", "0",
             "-ar", "48000", "-c:a", "libopus"]);
         await Make("wmv", [.. videoIn, "-c:v", "wmv2", "-q:v", "4", "-c:a", "wmav2", "-b:a", "128k"]);
         await Make("flv", [.. videoIn, "-c:v", "flv", "-q:v", "4", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k"]);
         await Make("ts", [.. videoIn, "-c:v", "mpeg2video", "-q:v", "4", "-c:a", "mp2", "-b:a", "128k"]);
+        await Make("mpg", [.. videoIn, "-c:v", "mpeg2video", "-q:v", "4", "-c:a", "mp2", "-b:a", "128k"]);
+        await Make("ogv", [.. videoIn, "-c:v", "libtheora", "-q:v", "7", "-c:a", "libvorbis"]);
 
         // keep the registry's order: audio formats first, then video
         return samples;
@@ -415,6 +429,7 @@ public static class SelfTest
             return new Sample(ext, ext, path);
         }
         samples.Add(Table("xlsx", path => Sheets.XlsxWriter.Write(workbook, path)));
+        samples.Add(Table("xlsm", path => Sheets.XlsxWriter.Write(workbook, path)));
         samples.Add(Table("ods", path => Sheets.OdsWriter.Write(workbook, path)));
         samples.Add(Table("xls", path =>
         {
@@ -423,6 +438,7 @@ public static class SelfTest
             packed.CopyTo(file);
         }));
         samples.Add(Table("csv", path => File.WriteAllText(path, "Item,Count,When\r\nMerhaba çay,12.5,2026-10-13\r\nTotal,25,\r\n", new System.Text.UTF8Encoding(true))));
+        samples.Add(Table("tsv", path => File.WriteAllText(path, "Item\tCount\tWhen\r\nMerhaba çay\t12.5\t2026-10-13\r\nTotal\t25\t\r\n", new System.Text.UTF8Encoding(true))));
 
         var docx = Path.Combine(dir, "letter.docx");
         using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(docx,
@@ -437,12 +453,24 @@ public static class SelfTest
             main.Document.Save();
         }
         samples.Add(new Sample("docx", "docx", docx));
+        var docm = Path.Combine(dir, "letter.docm");
+        File.Copy(docx, docm, overwrite: true);
+        samples.Add(new Sample("docm", "docm", docm));
+        var dotx = Path.Combine(dir, "letter.dotx");
+        File.Copy(docx, dotx, overwrite: true);
+        samples.Add(new Sample("dotx", "dotx", dotx));
 
         // Presentations: a title slide, and a slide with bullets, a picture and a table.
         var deck = SampleDeck();
         var pptx = Path.Combine(dir, "talk.pptx");
         Slides.PptxWriter.Write(deck, pptx);
         samples.Add(new Sample("pptx", "pptx", pptx) { Frames = deck.Slides.Count });
+        foreach (var ext in new[] { "ppsx", "potx", "pptm" })
+        {
+            var variant = Path.Combine(dir, $"talk.{ext}");
+            File.Copy(pptx, variant, overwrite: true);
+            samples.Add(new Sample(ext, ext, variant) { Frames = deck.Slides.Count });
+        }
         var odp = Path.Combine(dir, "talk.odp");
         Slides.OdpWriter.Write(deck, odp);
         samples.Add(new Sample("odp", "odp", odp) { Frames = deck.Slides.Count });
@@ -675,9 +703,39 @@ public static class SelfTest
 
         samples.Add(await ExternalArchiveAsync("7z", ToolLocator.SevenZipPath, ["a", "-t7z", "-y", "-bd"], content, dir,
             "7-Zip is not installed", ct));
+        samples.Add(await ExternalSingleFileArchiveAsync("xz (tar.xz)", "xz", "bundle.tar.xz", ToolLocator.SevenZipPath,
+            ["a", "-txz", "-y", "-bd"], tar, dir, "7-Zip is not installed", ct));
         samples.Add(await ExternalArchiveAsync("rar", ToolLocator.RarPath, ["a", "-r", "-y"], content, dir,
             "no RAR encoder to make a .rar sample (reading .rar needs none)", ct));
         return samples;
+    }
+
+    private static async Task<Sample> ExternalSingleFileArchiveAsync(string label, string ext, string fileName, string? tool,
+        string[] arguments, string inputFile, string dir, string missing, CancellationToken ct)
+    {
+        if (tool == null) return new Sample(label, ext, null, missing);
+
+        var path = Path.Combine(dir, fileName);
+        var psi = new ProcessStartInfo(tool)
+        {
+            WorkingDirectory = dir,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var arg in arguments) psi.ArgumentList.Add(arg);
+        psi.ArgumentList.Add(path);
+        psi.ArgumentList.Add(inputFile);
+
+        using var process = Process.Start(psi)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(ct);
+        var stderr = process.StandardError.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct);
+        await Task.WhenAll(stdout, stderr);
+        return process.ExitCode == 0 && File.Exists(path)
+            ? new Sample(label, ext, path) { Contents = ArchiveContents }
+            : new Sample(label, ext, null, $"could not make a .{ext} sample ({Shorten(await stderr)})");
     }
 
     private static async Task<Sample> ExternalArchiveAsync(string ext, string? tool, string[] arguments, string content,
@@ -725,10 +783,10 @@ public static class SelfTest
             return Size(new FileInfo(file).Length) + (Directory.Exists(produced) ? " · with pictures" : "");
         }
 
-        if (target == "csv")
+        if (target is "csv" or "tsv")
         {
             // a workbook of several sheets becomes a folder with a file for each
-            var files = Directory.Exists(produced) ? Directory.GetFiles(produced, "*.csv") : [produced];
+            var files = Directory.Exists(produced) ? Directory.GetFiles(produced, "*." + target) : [produced];
             if (files.Length == 0) throw new InvalidOperationException("the output folder is empty");
             var text = string.Join("\n", files.Select(File.ReadAllText));
             RequireMarker(text);
@@ -759,7 +817,7 @@ public static class SelfTest
                 CheckArchive(produced, expected);
                 break;
 
-            case "jpg" or "png" or "webp" or "bmp" or "tiff" or "gif" when sourceCategory != FileCategory.Video || target == "gif":
+            case "jpg" or "png" or "webp" or "avif" or "jxl" or "bmp" or "tiff" or "gif" or "ico" or "tga" when sourceCategory != FileCategory.Video || target == "gif":
                 var (width, _) = CheckImage(produced);
                 if (target is "gif" or "webp" && sample.Animated && FrameCount(produced) != sample.Frames)
                     throw new InvalidOperationException("the animation lost frames");
@@ -768,7 +826,7 @@ public static class SelfTest
                 detail += $" · {width} px wide";
                 break;
 
-            case "mp3" or "wav" or "flac" or "aac" or "m4a" or "ogg" or "opus":
+            case "mp3" or "wav" or "aiff" or "flac" or "aac" or "m4a" or "ogg" or "opus" or "ac3":
             {
                 var info = await FfmpegRunner.ProbeAsync(produced, ct);
                 if (!info.HasAudio) throw new InvalidOperationException("the output has no audio");
@@ -851,7 +909,7 @@ public static class SelfTest
                 var cells = Sheets.ExcelReader.ReadFile(produced).Sheets.SelectMany(sheet => sheet.Rows).SelectMany(row => row).ToList();
                 RequireMarker(string.Join(" ", cells.Select(cell => cell.Text)));
                 // what was a number in a spreadsheet is still one
-                if (sample.Extension is "ods" or "xls" or "csv" && !cells.Any(cell => cell.Kind == Sheets.CellKind.Number && cell.Number == 12.5))
+                if (sample.Extension is "ods" or "xls" or "xlsm" or "csv" or "tsv" && !cells.Any(cell => cell.Kind == Sheets.CellKind.Number && cell.Number == 12.5))
                     throw new InvalidOperationException("the numbers became text");
                 break;
             }

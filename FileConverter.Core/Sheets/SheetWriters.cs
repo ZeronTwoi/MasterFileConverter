@@ -357,9 +357,9 @@ internal static class OdsWriter
 internal static class CsvWriter
 {
     /// <returns>The file written, or the folder when the workbook had several sheets.</returns>
-    public static string Write(Workbook workbook, string output, ConversionOptions options)
+    public static string Write(Workbook workbook, string output, ConversionOptions options, char? fixedSeparator = null)
     {
-        char separator = options.Detail.Text(K.Separator) switch
+        char separator = fixedSeparator ?? options.Detail.Text(K.Separator) switch
         {
             "semicolon" => ';',
             "tab" => '\t',
@@ -373,12 +373,14 @@ internal static class CsvWriter
             return output;
         }
 
+        var ext = Path.GetExtension(output);
+        if (string.IsNullOrEmpty(ext)) ext = fixedSeparator == '\t' ? ".tsv" : ".csv";
         var folder = FrameExtraction.CreateOutputFolder(output, "sheets");
         try
         {
             var names = XlsxWriter.UniqueNames(sheets);
             for (int i = 0; i < sheets.Count; i++)
-                WriteSheet(sheets[i], Path.Combine(folder, names[i] + ".csv"), separator);
+                WriteSheet(sheets[i], Path.Combine(folder, names[i] + ext), separator);
             return folder;
         }
         catch
