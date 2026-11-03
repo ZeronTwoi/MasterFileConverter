@@ -7,18 +7,25 @@ The part for a version is also what its page under
 
 A new look, one slider, and a way in for AI agents.
 
-- **A plain dark window.** Dark background, thin white lines, square corners and a terminal's
-  type, with each panel's title set into its line. The line colour can be changed in the ···
-  menu: *Border colour* offers white, green, amber, cyan, blue, purple and red. This replaces
-  the light theme and *Match the system*: the app is dark now.
+- **A window like a tiling desktop.** Dark panes with thin white lines, the title set into each
+  line and the pane in use brighter; a file list with one line per file and named columns; a
+  status line along the bottom; the app's own title bar on Windows. The type is JetBrains Mono,
+  which the app brings, so it looks the same everywhere. This replaces the light theme and
+  *Match the system*: the app is dark now.
+- **Colours to choose from.** Menu → *Colours*: White, Green and Amber, or the palettes known from
+  Linux desktops: Tokyo Night, Catppuccin, Gruvbox, Nord and Dracula.
+- **Function keys, shown along the bottom and clickable:** F2 add files, F3 add a folder, F5
+  convert, F6 format settings, F8 clear, F9 menu.
+- **A start screen** that says what to do, with the whole window for it: the format settings
+  make room while there are no files.
 - **One slider.** *File size* is gone and **Result** does both: from *Smallest* (about 25 % of
   the size, quick) through *Full quality*, where it starts, to *Best* (full quality, the
-  smallest file at it, slowest). What you had set moves to the nearest position. An exact size
+  smallest file at it, slowest), with each position named under it and clickable. What you had set moves to the nearest position. An exact size
   for a format or for the files selected is still there, under Format settings → *Set by*.
 - **A dark logo.** The same two arrows on a dark tile, in every size and place it is used.
 - **For AI agents and scripts** (see [docs/agents.md](docs/agents.md)):
   - `--mcp` runs the app as a tool server (Model Context Protocol) with the tools `convert`,
-    `list_formats`, `list_settings`, `status` and `setup_engines`. ··· menu → *Copy AI agent setup*
+    `list_formats`, `list_settings`, `status` and `setup_engines`. Menu → *Copy AI agent setup*
     gives what to paste into an agent's settings.
   - `--json` makes the command line print one JSON document: every result's path, size and
     status, with error codes to act on.

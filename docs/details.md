@@ -370,7 +370,7 @@ some of them can become says how many ("pdf (2 of 3)"), and the others keep thei
 
 ## Everyday features
 
-- **Everything is remembered:** the Result slider, GPU, border colour, output folder, the panel's
+- **Everything is remembered:** the Result slider, GPU, colours, output folder, the panel's
   settings and presets, the window size, and the target last chosen for each kind of source file.
 - **Files and folders** can be dropped anywhere on the window or added with the buttons; a
   folder is added with everything inside it. Files passed on the command line ("Open with")
@@ -382,18 +382,22 @@ some of them can become says how many ("pdf (2 of 3)"), and the others keep thei
 - **Result slider, below full quality** — target output size as a % of the original. Drives
   bitrate targeting for audio/video (two-pass encoding on slower speed presets), a search for the
   highest quality that fits for images, and compression levels for archives.
-- **Dark, with thin lines** in the colour chosen under *Border colour* in the ··· menu at the
-  bottom right (white, green, amber, cyan, blue, purple or red). The type is the system's own
-  monospaced one: Cascadia Mono or Consolas on Windows, DejaVu Sans Mono or similar on Linux. The
-  same menu copies the setup for an AI agent and opens the settings folder, the licences and the
-  app's page with its source.
+- **Panes on a dark background,** the one in use with the brighter line, in the colours chosen
+  under *Colours* in the menu (F9): White, Green, Amber, Tokyo Night, Catppuccin, Gruvbox, Nord or
+  Dracula. Every scheme's text, status colours and lines are held to a contrast of at least 4.5:1
+  on its background by a test. The type is JetBrains Mono, which comes with the app. On Windows the
+  window draws its own title bar and keeps the system's snapping and resizing; on Linux the title
+  bar is the desktop's, or none on a tiling one. The same menu copies the setup for an AI agent
+  and opens the settings folder, the licences and the app's page with its source.
+- **Function keys,** shown along the bottom, where each is also a button, and working wherever
+  the focus is: F2 add files, F3 add a folder, F5 convert, F6 format settings, F8 clear, F9 menu.
 - **New versions, if you want to hear of them.** The first start asks once whether the app
   should tell you when a new version is out. With *No* it never asks again and never connects
   by itself. With *Yes* it looks once at each start, and a newer version shows as a warning sign
-  beside the ··· menu. The look is one request without content to GitHub for the address of the
+  in the status line. The look is one request without content to GitHub for the address of the
   latest release — the version number is read from the address that comes back — so GitHub sees
   what any website sees, the computer's internet address, and nothing about you or your files.
-  The ··· menu's *Tell me about new versions* changes the choice at any time, and *Look for a
+  The menu's *Tell me about new versions* changes the choice at any time, and *Look for a
   new version now* looks once on request, whatever the choice. The command line never looks by
   itself.
 - **Updating is one click** on that warning sign — and never happens without it. The app asks
@@ -568,7 +572,7 @@ touching it is the same source under other names: publish with `-p:FcProgramName
 releases), then `build\windows\installer.ps1 -Folder … -Set @{ ProgramName = …; DisplayName = …;
 AppId = … }`. It gets its own program folder, data folder, shortcuts and registry entries.
 
-**The licences** go into every download's `app/licenses` folder, which the window's ··· menu
+**The licences** go into every download's `app/licenses` folder, which the window's menu
 opens: `LICENSE`, `THIRD-PARTY-NOTICES.md`, the texts in `build/licenses`, and the licence and
 notice files that the libraries' own NuGet packages bring — collected when the download is
 built, from the very packages it is built from.
@@ -584,12 +588,13 @@ files' SHA-256 checksums.
 
 ## What has been checked
 
-Version 2.8.0 gave the window its plain dark look and put the agent interface in. On Windows 11:
+Version 2.8.0 gave the window its tiled look and put the agent interface in. On Windows 11:
 the window's looks were checked in renders of the real window at its normal and smallest sizes,
-with the panel open and in another colour, and the menu with its colours; the MCP server by its
-tests (a client's conversation, every error code) and by a real client process talking to the
-published download. Not checked: the look on a Linux desktop, where the type is whichever
-monospaced font the system has, and any particular agent product's MCP client.
+in all eight colour schemes, with the panel open, and the menu with its schemes; a trimmed build's
+own window at 125 % scaling, normal and maximized, with what Windows is told about its title bar
+and buttons, and files converted through F5; the MCP server by its tests (a client's conversation,
+every error code) and by a real client process talking to the published download. Not checked:
+the look on a Linux desktop, and any particular agent product's MCP client.
 
 Version 2.5.0 added documents, spreadsheets, presentations and drawings: some forty formats on
 one side or the other, each into the others. (It made the downloads 5 to 7 MB larger.)

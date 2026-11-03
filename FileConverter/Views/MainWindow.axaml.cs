@@ -14,6 +14,16 @@ public partial class MainWindow : Window, IAppHost
     public MainWindow()
     {
         InitializeComponent();
+
+        // On Windows the window's own colours go right up to its edge, with the app's title bar.
+        // On Linux the title bar is the desktop's, or there is none, on a tiling one: its choice.
+        TitleBar.IsVisible = OperatingSystem.IsWindows();
+        if (OperatingSystem.IsWindows())
+        {
+            ExtendClientAreaToDecorationsHint = true;
+            ExtendClientAreaTitleBarHeightHint = TitleBar.Height;
+        }
+
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
 
@@ -54,6 +64,44 @@ public partial class MainWindow : Window, IAppHost
         }
         if (settings.WindowMaximized) WindowState = WindowState.Maximized;
     }
+
+    // ---------- the keys along the bottom ----------
+    //
+    // Function keys, as in Midnight Commander or htop: they do nothing else in a text box, so they
+    // work wherever the focus is. (F4 would open a focused drop-down; F10 belongs to the system.)
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled || e.KeyModifiers != KeyModifiers.None || ViewModel is not { } viewModel) return;
+        switch (e.Key)
+        {
+            case Key.F2:
+                viewModel.AddFilesCommand.Execute(null);
+                break;
+            case Key.F3:
+                viewModel.AddFolderCommand.Execute(null);
+                break;
+            case Key.F5:
+                if (viewModel.ConvertAllCommand.CanExecute(null)) viewModel.ConvertAllCommand.Execute(null);
+                break;
+            case Key.F6:
+                if (viewModel.HasItems) viewModel.DetailedSettingsOpen = !viewModel.DetailedSettingsOpen;
+                break;
+            case Key.F8:
+                if (viewModel.HasItems) ClearButton.Flyout?.ShowAt(ClearButton);
+                break;
+            case Key.F9:
+                MenuButton.Flyout?.ShowAt(MenuButton);
+                break;
+            default:
+                return;
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>The line on the start screen that says what F9 does.</summary>
+    private void OnOpenMenu(object? sender, RoutedEventArgs e) => MenuButton.Flyout?.ShowAt(MenuButton);
 
     // ---------- closing ----------
     //

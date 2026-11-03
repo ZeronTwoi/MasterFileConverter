@@ -17,7 +17,8 @@ are in `build/licenses`.
 | [MicroCom](https://github.com/kekekeks/MicroCom) (Windows) | part of Avalonia | MIT | below |
 | [Tmds.DBus](https://github.com/tmds/Tmds.DBus) (Linux) | part of Avalonia | MIT | below |
 | [ANGLE](https://chromium.googlesource.com/angle/angle) (Windows) | part of Avalonia: drawing | BSD 3-Clause | *package:* `Avalonia.Angle.Windows.Natives` |
-| [Inter](https://github.com/rsms/inter) (Linux) | the window's font | SIL Open Font License 1.1 | `OFL-1.1-Inter.txt` |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) | the window's font | SIL Open Font License 1.1 | `OFL-1.1-JetBrainsMono.txt` |
+| [Inter](https://github.com/rsms/inter) (Linux) | the window's font for what JetBrains Mono does not have | SIL Open Font License 1.1 | `OFL-1.1-Inter.txt` |
 | [SkiaSharp](https://github.com/mono/SkiaSharp) and [Skia](https://skia.org) | drawing, picture → PDF | MIT, BSD 3-Clause | *package:* `SkiaSharp`, `SkiaSharp.NativeAssets.*` |
 | [HarfBuzzSharp](https://github.com/mono/SkiaSharp) and [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | text layout | MIT | *package:* `HarfBuzzSharp`, `HarfBuzzSharp.NativeAssets.*` |
 | [.NET Community Toolkit](https://github.com/CommunityToolkit/dotnet) | the window's logic | MIT | *package:* `CommunityToolkit.Mvvm` |

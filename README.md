@@ -91,7 +91,7 @@ build\publish.ps1                      # make the downloads (build/publish.sh on
 Master File Converter is open source under the [MIT License](LICENSE): free to use, change and
 pass on, commercially too. The files you convert with it are yours, without conditions.
 
-It is built with these libraries, whose licences ship in every download (the app's ··· menu →
+It is built with these libraries, whose licences ship in every download (the app's menu →
 *Licences*) and are listed in full in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md):
 
 | Library | Licence |
@@ -102,7 +102,7 @@ It is built with these libraries, whose licences ship in every download (the app
 | Magick.NET, PdfPig, qpdf | Apache 2.0 |
 | ImageMagick and the image libraries built into it | ImageMagick License; LGPL for libheif, libde265 and libraw |
 | QuestPDF | QuestPDF Community License |
-| Inter and Lato (fonts) | SIL Open Font License 1.1 |
+| JetBrains Mono, Inter and Lato (fonts) | SIL Open Font License 1.1 |
 
 FFmpeg (GPL) and 7-Zip (LGPL) are not part of the download; the app fetches them from their
 publishers when asked to, or uses the ones already installed.

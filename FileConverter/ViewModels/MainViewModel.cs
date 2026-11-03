@@ -257,6 +257,13 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnResultLevelChanged(int value) => Persist();
 
+    /// <summary>A click on one of the names under the Result slider.</summary>
+    [RelayCommand]
+    private void SetResult(string position)
+    {
+        if (ResultLevels.Find(position) is { } level) ResultLevel = ResultLevels.All.ToList().IndexOf(level);
+    }
+
     partial void OnAutoSpeedChanged(bool value) => Persist();
     partial void OnUseGpuChanged(bool value) => Persist();
     partial void OnExistingFileIndexChanged(int value) => Persist();
@@ -276,16 +283,16 @@ public partial class MainViewModel : ObservableObject
 
     // ---------- appearance ----------
 
-    /// <summary>The colour of the window's lines and accents, chosen in the ··· menu.</summary>
-    public string LineColour => _settings.LineColour;
+    /// <summary>The window's colours, chosen in the menu.</summary>
+    public string Colours => _settings.Colours;
 
     [RelayCommand]
-    private void SetLineColour(string id)
+    private void SetColours(string id)
     {
-        if (!LineColours.All.Any(c => c.Id == id)) return;
-        _settings.LineColour = id;
-        OnPropertyChanged(nameof(LineColour));
-        if (Avalonia.Application.Current is App app) app.ApplyLineColour(id);
+        if (!ColourSchemes.All.Any(c => c.Id == id)) return;
+        _settings.Colours = id;
+        OnPropertyChanged(nameof(Colours));
+        if (Avalonia.Application.Current is App app) app.ApplyColours(id);
         Persist();
     }
 

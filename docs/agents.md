@@ -7,7 +7,7 @@ downloads anything). A source file is never changed or replaced.
 
 ## Connect an agent (MCP)
 
-In the window, ··· menu → **Copy AI agent setup**, then paste into your agent's MCP settings. Or
+In the window, menu (F9) → **Copy AI agent setup**, then paste into your agent's MCP settings. Or
 print the same thing from a terminal:
 
 ```sh

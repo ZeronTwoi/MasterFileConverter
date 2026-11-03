@@ -2,7 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Threading;
+using FileConverter.Core;
 using FileConverter.Core.Settings;
 using FileConverter.ViewModels;
 using FileConverter.Views;
@@ -148,6 +150,10 @@ public class WindowTests
         var store = new SettingsStore(folder.File("settings.json"));
         var viewModel = new MainViewModel(store, findEngines: false);
         var app = (App)Avalonia.Application.Current!;
+        Avalonia.Media.Color Brush(string key) =>
+            app.Resources.TryGetResource(key, Avalonia.Styling.ThemeVariant.Dark, out var found)
+                ? ((Avalonia.Media.SolidColorBrush)found!).Color
+                : default;
         Avalonia.Media.Color Line() =>
             app.Resources.TryGetResource("LineBrush", Avalonia.Styling.ThemeVariant.Dark, out var found)
                 ? ((Avalonia.Media.SolidColorBrush)found!).Color
@@ -155,7 +161,7 @@ public class WindowTests
         try
         {
             var window = Show(viewModel, width: 1180, height: 720);
-            Assert.Equal("white", viewModel.LineColour);
+            Assert.Equal("white", viewModel.Colours);
             await viewModel.AddPathsAsync(SampleFiles(folder, "holiday.jpg", "trailer.mkv", "report.docx"));
             viewModel.Items[1].SelectedTarget = "mp4";
             viewModel.SelectedItem = viewModel.Items[1];
@@ -163,26 +169,36 @@ public class WindowTests
             viewModel.Items[2].State = ItemState.Failed;
             viewModel.Items[2].StatusText = "Converting legacy .doc files requires Microsoft Word or LibreOffice.";
 
-            viewModel.SetLineColourCommand.Execute("amber");
-            Assert.Equal(Avalonia.Media.Color.Parse(LineColours.Hex("amber")), Line());
-            Capture(window, "07-amber");
+            foreach (var scheme in ColourSchemes.All)
+            {
+                viewModel.SetColoursCommand.Execute(scheme.Id);
+                Capture(window, "scheme-" + scheme.Id);
+            }
 
-            viewModel.SetLineColourCommand.Execute("no such colour");   // nothing changes
-            Assert.Equal("amber", viewModel.LineColour);
+            // a scheme is more than its line: the background and the text change with it
+            var tokyo = ColourSchemes.Find("tokyo-night");
+            viewModel.SetColoursCommand.Execute(tokyo.Id);
+            Assert.Equal(Avalonia.Media.Color.Parse(tokyo.Line), Line());
+            Assert.Equal(Avalonia.Media.Color.Parse(tokyo.Background), Brush("BgBrush"));
+            Assert.Equal(Avalonia.Media.Color.Parse(tokyo.Text), Brush("TextBrush"));
+            Capture(window, "07-tokyo-night");
+
+            viewModel.SetColoursCommand.Execute("no such colours");   // nothing changes
+            Assert.Equal(tokyo.Id, viewModel.Colours);
 
             viewModel.Flush();
-            Assert.Equal("amber", new MainViewModel(store, findEngines: false).LineColour);
+            Assert.Equal(tokyo.Id, new MainViewModel(store, findEngines: false).Colours);
             window.Close();
         }
         finally
         {
-            app.ApplyLineColour(LineColours.Default);
+            app.ApplyColours(ColourSchemes.Default);
         }
     }
 
-    /// <summary>The menu offers exactly the colours there are, each in its own colour, and choosing one works.</summary>
+    /// <summary>The menu offers exactly the schemes there are, each in its own colour, and choosing one works.</summary>
     [AvaloniaFact]
-    public void TheMenuOffersTheBorderColours()
+    public void TheMenuOffersTheColours()
     {
         using var folder = TestSetup.NewFolder();
         var viewModel = NewViewModel(folder);
@@ -195,12 +211,13 @@ public class WindowTests
             flyout.ShowAt(button);
             Dispatcher.UIThread.RunJobs();
 
-            var colours = flyout.Items.OfType<MenuItem>().Single(item => item.Header as string == "Border colour");
+            var colours = flyout.Items.OfType<MenuItem>().Single(item => item.Header as string == "Colours");
             colours.IsSubMenuOpen = true;
             Dispatcher.UIThread.RunJobs();
             var items = colours.Items.OfType<MenuItem>().ToList();
-            Assert.Equal(LineColours.All.Select(c => c.Id), items.Select(item => (string)item.CommandParameter!));
-            Assert.Equal(LineColours.All.Select(c => Avalonia.Media.Color.Parse(c.Hex)),
+            Assert.Equal(ColourSchemes.All.Select(c => c.Id), items.Select(item => (string)item.CommandParameter!));
+            Assert.Equal(ColourSchemes.All.Select(c => c.Name), items.Select(item => ((TextBlock)item.Header!).Text));
+            Assert.Equal(ColourSchemes.All.Select(c => Avalonia.Media.Color.Parse(c.Line)),
                 items.Select(item => ((Avalonia.Media.ISolidColorBrush)((TextBlock)item.Header!).Foreground!).Color));
             Assert.True(items[0].IsChecked); // white, to begin with
 
@@ -212,25 +229,131 @@ public class WindowTests
 
             items[2].Command!.Execute(items[2].CommandParameter);
             Dispatcher.UIThread.RunJobs();
-            Assert.Equal("amber", viewModel.LineColour);
+            Assert.Equal("amber", viewModel.Colours);
             Assert.True(items[2].IsChecked);
             Assert.False(items[0].IsChecked);
             flyout.Hide();
         }
         finally
         {
-            app.ApplyLineColour(LineColours.Default);
+            app.ApplyColours(ColourSchemes.Default);
             window.Close();
         }
     }
 
-    /// <summary>A settings file from before the colours, with a theme and a colour nobody offers, starts white.</summary>
+    /// <summary>A settings file from before the schemes, or with one nobody offers, starts white.</summary>
     [Fact]
     public void AnOldOrWrongColourStartsWhite()
     {
         using var folder = TestSetup.NewFolder();
-        File.WriteAllText(folder.File("settings.json"), """{ "theme": "light", "lineColour": "tartan" }""");
-        Assert.Equal("white", new SettingsStore(folder.File("settings.json")).Load().LineColour);
+        File.WriteAllText(folder.File("settings.json"), """{ "theme": "light", "colours": "tartan" }""");
+        Assert.Equal("white", new SettingsStore(folder.File("settings.json")).Load().Colours);
+    }
+
+    /// <summary>Every scheme can be read: text and dim text, status colours and the line, on its background.</summary>
+    [Fact]
+    public void EveryColourSchemeCanBeRead()
+    {
+        static double Luminance(string hex)
+        {
+            var c = Avalonia.Media.Color.Parse(hex);
+            static double Part(byte value)
+            {
+                double share = value / 255.0;
+                return share <= 0.03928 ? share / 12.92 : Math.Pow((share + 0.055) / 1.055, 2.4);
+            }
+            return 0.2126 * Part(c.R) + 0.7152 * Part(c.G) + 0.0722 * Part(c.B);
+        }
+        static double Contrast(string a, string b)
+        {
+            double one = Luminance(a), two = Luminance(b);
+            return (Math.Max(one, two) + 0.05) / (Math.Min(one, two) + 0.05);
+        }
+
+        foreach (var scheme in ColourSchemes.All)
+        {
+            // 4.5 is what text of this size is asked for; it holds on the status line's surface too
+            foreach (var (what, colour) in new[]
+                     {
+                         ("text", scheme.Text), ("dim", scheme.Dim), ("success", scheme.Success),
+                         ("warning", scheme.Warning), ("error", scheme.Error), ("line", scheme.Line)
+                     })
+            {
+                Assert.True(Contrast(colour, scheme.Background) >= 4.5, $"{scheme.Id}: {what} on the background");
+                Assert.True(Contrast(colour, scheme.Surface) >= 3.5, $"{scheme.Id}: {what} on the surface");
+            }
+            // the big button and the mode block: the background's colour on the line's
+            Assert.True(Contrast(scheme.Background, scheme.Line) >= 4.5, $"{scheme.Id}: on the accent");
+        }
+    }
+
+    /// <summary>The names under the slider are the levels, in their order, and a click on one sets it.</summary>
+    [AvaloniaFact]
+    public void TheNamesUnderTheSliderSetTheResult()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var window = Show(viewModel);
+        var stops = window.FindControl<Avalonia.Controls.Primitives.UniformGrid>("ResultStops")!.Children.OfType<Button>().ToList();
+
+        Assert.Equal(ResultLevels.All.Select(level => level.Name), stops.Select(stop => (string)stop.Content!));
+        stops[1].Command!.Execute(stops[1].CommandParameter);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, viewModel.ResultLevel);
+        Assert.Contains("on", stops[1].Classes);
+        Assert.DoesNotContain("on", stops[ResultLevels.Default].Classes);
+        window.Close();
+    }
+
+    /// <summary>The function keys do what the bottom line says, and leave a key with Ctrl alone.</summary>
+    [AvaloniaFact]
+    public async Task TheFunctionKeysWork()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var window = Show(viewModel);
+        viewModel.DetailedSettingsOpen = false;
+        await viewModel.AddPathsAsync(SampleFiles(folder, "a.png", "b.wav"));
+
+        window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.DetailedSettingsOpen);
+
+        window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.Control);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(viewModel.DetailedSettingsOpen);
+
+        var menu = (MenuFlyout)window.FindControl<Button>("MenuButton")!.Flyout!;
+        window.KeyPressQwerty(PhysicalKey.F9, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(menu.IsOpen);
+        menu.Hide();
+
+        var clear = (MenuFlyout)window.FindControl<Button>("ClearButton")!.Flyout!;
+        window.KeyPressQwerty(PhysicalKey.F8, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(clear.IsOpen);
+        clear.Hide();
+        window.Close();
+    }
+
+    /// <summary>With no files, the start screen has the whole window, whatever was left switched on.</summary>
+    [AvaloniaFact]
+    public async Task WithNoFilesTheFormatSettingsMakeRoom()
+    {
+        using var folder = TestSetup.NewFolder();
+        var viewModel = NewViewModel(folder);
+        var window = Show(viewModel);
+        viewModel.DetailedSettingsOpen = true;
+        var pane = window.FindControl<Border>("FormatSettingsPanel")!.Parent!;
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(((Panel)pane).IsVisible);
+        Capture(window, "00-start");
+
+        await viewModel.AddPathsAsync(SampleFiles(folder, "a.png"));
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(((Panel)pane).IsVisible);
+        window.Close();
     }
 
     [AvaloniaFact]

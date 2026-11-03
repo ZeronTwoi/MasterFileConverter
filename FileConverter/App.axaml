@@ -14,13 +14,15 @@
 
             <local:IsEqualConverter x:Key="IsEqual" />
             <local:GroupToBrushConverter x:Key="GroupToBrush" />
+            <local:LowerCaseConverter x:Key="LowerCase" />
+            <local:ProgressTextConverter x:Key="ProgressText" />
         </ResourceDictionary>
     </Application.Resources>
 
     <Application.Styles>
         <FluentTheme>
             <FluentTheme.Palettes>
-                <ColorPaletteResources x:Key="Dark" Accent="#FFFFFF" RegionColor="#0C0C0D" ErrorText="#FF6E6E" />
+                <ColorPaletteResources x:Key="Dark" Accent="#FFFFFF" RegionColor="#0B0B0C" ErrorText="#FF6E6E" />
             </FluentTheme.Palettes>
         </FluentTheme>
         <StyleInclude Source="/Themes/Controls.axaml" />

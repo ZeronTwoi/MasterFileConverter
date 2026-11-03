@@ -1,12 +1,13 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- The app's look: dark background, thin lines, one colour for lines and accents.
-         The brushes under "the line colour" are changed in place by App.ApplyLineColour when
-         another colour is chosen in the ··· menu, so everything that uses them follows at once. -->
+    <!-- The app's look: panes side by side on a dark background, the way a tiling desktop and
+         programs like btop or lazygit draw them. The colours here are the "white" scheme; the
+         brushes are changed in place by App.ApplyColours when others are chosen in the menu, so
+         everything that uses them follows at once. -->
 
-    <!-- the type: a terminal's, whichever of these the system has -->
-    <FontFamily x:Key="ContentControlThemeFontFamily">Cascadia Mono, Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Ubuntu Mono, monospace, $Default</FontFamily>
+    <!-- the type: one a terminal would use, the same on every system because the app brings it -->
+    <FontFamily x:Key="ContentControlThemeFontFamily">/Assets/Fonts#JetBrains Mono NL, Cascadia Mono, Consolas, DejaVu Sans Mono, monospace, $Default</FontFamily>
 
     <!-- square corners throughout, the Fluent controls' too -->
     <CornerRadius x:Key="ControlCornerRadius">0</CornerRadius>
@@ -15,28 +16,33 @@
     <x:Double x:Key="SliderHorizontalThumbWidth">9</x:Double>
     <x:Double x:Key="SliderHorizontalThumbHeight">16</x:Double>
 
-    <!-- the fixed colours -->
-    <SolidColorBrush x:Key="BgBrush" Color="#0C0C0D" />
-    <SolidColorBrush x:Key="Surface2Brush" Color="#141416" />
-    <SolidColorBrush x:Key="Surface2HoverBrush" Color="#222225" />
-    <SolidColorBrush x:Key="Surface2PressedBrush" Color="#2C2C30" />
-    <SolidColorBrush x:Key="TextBrush" Color="#EDEDED" />
-    <SolidColorBrush x:Key="TextDimBrush" Color="#9A9A9F" />
-    <SolidColorBrush x:Key="OnAccentBrush" Color="#0C0C0D" />
+    <SolidColorBrush x:Key="BgBrush" Color="#0B0B0C" />
+    <SolidColorBrush x:Key="Surface2Brush" Color="#151517" />
+    <SolidColorBrush x:Key="Surface2HoverBrush" Color="#29292B" />
+    <SolidColorBrush x:Key="Surface2PressedBrush" Color="#39393B" />
+    <SolidColorBrush x:Key="TextBrush" Color="#E8E8E8" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="#909096" />
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#0B0B0C" />
     <SolidColorBrush x:Key="SuccessBrush" Color="#5FD38D" />
     <SolidColorBrush x:Key="ErrorBrush" Color="#FF6E6E" />
     <SolidColorBrush x:Key="WarnBrush" Color="#FFB000" />
-    <SolidColorBrush x:Key="ChipTextBrush" Color="#0C0C0D" />
+    <!-- on a group's mark, which has the same colours whatever the scheme -->
+    <SolidColorBrush x:Key="ChipTextBrush" Color="#0B0B0C" />
 
-    <!-- the line colour (white unless another is chosen): App.ApplyLineColour sets these -->
+    <!-- full on the pane in use, mid on the others, dim on what is inside a pane -->
     <SolidColorBrush x:Key="LineBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="LineDimBrush" Color="#66FFFFFF" />
+    <SolidColorBrush x:Key="LineMidBrush" Color="#A6FFFFFF" />
+    <SolidColorBrush x:Key="LineDimBrush" Color="#47FFFFFF" />
     <SolidColorBrush x:Key="AccentBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="AccentHoverBrush" Color="#D9D9D9" />
     <SolidColorBrush x:Key="AccentPressedBrush" Color="#B3B3B3" />
-    <SolidColorBrush x:Key="SelectionBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#24FFFFFF" />
 
     <!-- the Fluent theme's controls, in the same colours -->
+    <StaticResource x:Key="TitleBarBackgroundBrush" ResourceKey="BgBrush" />
+    <StaticResource x:Key="CaptionButtonForeground" ResourceKey="TextBrush" />
+    <StaticResource x:Key="CaptionButtonBorderBrush" ResourceKey="LineDimBrush" />
+
     <StaticResource x:Key="SliderTrackFill" ResourceKey="LineDimBrush" />
     <StaticResource x:Key="SliderTrackFillPointerOver" ResourceKey="LineDimBrush" />
     <StaticResource x:Key="SliderTrackFillPressed" ResourceKey="LineDimBrush" />
@@ -108,6 +114,9 @@
     </LinearGradientBrush>
     <StreamGeometry x:Key="LogoArrowOut">M8,10.5 H24 M19.84,6.34 L24,10.5 L19.84,14.66</StreamGeometry>
     <StreamGeometry x:Key="LogoArrowBack">M24,21.5 H8 M12.16,17.34 L8,21.5 L12.16,25.66</StreamGeometry>
+
+    <!-- the start screen's word, in the proportions of a terminal's cells: drawn, so that it has no seams at any scale -->
+    <StreamGeometry x:Key="BannerWord">M0,0H30V11H0ZM40,0H70V11H40ZM80,0H95V11H80ZM115,0H125V11H115ZM130,0H140V11H130ZM160,0H170V11H160ZM175,0H210V11H175ZM215,0H245V11H215ZM255,0H295V11H255ZM0,11H10V22H0ZM35,11H45V22H35ZM65,11H75V22H65ZM80,11H100V22H80ZM115,11H125V22H115ZM130,11H140V22H130ZM160,11H170V22H160ZM175,11H185V22H175ZM215,11H225V22H215ZM240,11H250V22H240ZM270,11H280V22H270ZM0,22H10V33H0ZM35,22H45V33H35ZM65,22H75V33H65ZM80,22H90V33H80ZM95,22H105V33H95ZM115,22H125V33H115ZM130,22H140V33H130ZM160,22H170V33H160ZM175,22H200V33H175ZM215,22H245V33H215ZM270,22H280V33H270ZM0,33H10V44H0ZM35,33H45V44H35ZM65,33H75V44H65ZM80,33H90V44H80ZM100,33H110V44H100ZM115,33H125V44H115ZM135,33H145V44H135ZM155,33H165V44H155ZM175,33H185V44H175ZM215,33H225V44H215ZM240,33H250V44H240ZM270,33H280V44H270ZM5,44H35V55H5ZM40,44H70V55H40ZM80,44H90V55H80ZM105,44H125V55H105ZM140,44H160V55H140ZM175,44H210V55H175ZM215,44H225V55H215ZM240,44H250V55H240ZM270,44H280V55H270Z</StreamGeometry>
 
     <!-- small line icons -->
     <StreamGeometry x:Key="IconClose">M 1,1 L 11,11 M 11,1 L 1,11</StreamGeometry>

@@ -39,8 +39,8 @@ public sealed class AppSettings
     /// <summary>The target last chosen for each source type, offered again next time ("png" → "webp").</summary>
     public Dictionary<string, string> LastTargets { get; set; } = [];
 
-    /// <summary>The colour of the window's lines and accents: one of <see cref="LineColours"/>.</summary>
-    public string LineColour { get; set; } = LineColours.Default;
+    /// <summary>The window's colours: one of <see cref="ColourSchemes"/>.</summary>
+    public string Colours { get; set; } = ColourSchemes.Default;
 
     /// <summary>
     /// Look once at each start whether a newer version is out? Nothing as long as the user has not
@@ -53,18 +53,33 @@ public sealed class AppSettings
     public bool WindowMaximized { get; set; }
 }
 
-/// <summary>The colours the window's lines and accents can be given, in the ··· menu.</summary>
-public static class LineColours
+/// <summary>One set of the window's colours, as #RRGGBB.</summary>
+public sealed record ColourScheme(
+    string Id, string Name, string Background, string Surface, string Text, string Dim,
+    string Line, string Success, string Warning, string Error);
+
+/// <summary>
+/// The colours the window can be given, in its menu: plain lines on black, and the palettes known
+/// from Linux desktops and terminals. The dim text of some is a little lighter than the original
+/// palette's, which is meant for comments in code and not for text that has to be read.
+/// </summary>
+public static class ColourSchemes
 {
     public const string Default = "white";
 
-    public static IReadOnlyList<(string Id, string Hex)> All { get; } =
+    public static IReadOnlyList<ColourScheme> All { get; } =
     [
-        ("white", "#FFFFFF"), ("green", "#5FF287"), ("amber", "#FFB000"), ("cyan", "#56D8E8"),
-        ("blue", "#6FA8FF"), ("purple", "#C792EA"), ("red", "#FF6E6E")
+        new("white", "White", "#0B0B0C", "#151517", "#E8E8E8", "#909096", "#FFFFFF", "#5FD38D", "#FFB000", "#FF6E6E"),
+        new("green", "Green", "#07100A", "#0E1B13", "#D3F5DC", "#74A384", "#5FF287", "#5FF287", "#E6D15C", "#FF6E6E"),
+        new("amber", "Amber", "#100B04", "#1C140A", "#FFE6BA", "#AD9163", "#FFB000", "#B9D96C", "#FFB000", "#FF7A6B"),
+        new("tokyo-night", "Tokyo Night", "#1A1B26", "#24283B", "#C0CAF5", "#8089B3", "#7AA2F7", "#9ECE6A", "#E0AF68", "#F7768E"),
+        new("catppuccin", "Catppuccin", "#1E1E2E", "#2A2B3C", "#CDD6F4", "#9399B2", "#CBA6F7", "#A6E3A1", "#F9E2AF", "#F38BA8"),
+        new("gruvbox", "Gruvbox", "#1D2021", "#282828", "#EBDBB2", "#A89984", "#FE8019", "#B8BB26", "#FABD2F", "#FB4934"),
+        new("nord", "Nord", "#2E3440", "#3B4252", "#ECEFF4", "#A7B1C4", "#88C0D0", "#A3BE8C", "#EBCB8B", "#E5949C"),
+        new("dracula", "Dracula", "#282A36", "#343746", "#F8F8F2", "#98A2CE", "#BD93F9", "#50FA7B", "#F1FA8C", "#FF6E6E")
     ];
 
-    public static string Hex(string id) => All.FirstOrDefault(c => c.Id == id).Hex ?? All[0].Hex;
+    public static ColourScheme Find(string id) => All.FirstOrDefault(scheme => scheme.Id == id) ?? All[0];
 }
 
 /// <summary>A named bundle of precise settings for one kind of target ("Fit in 10 MB" for video).</summary>
@@ -136,7 +151,7 @@ public sealed class SettingsStore
         settings.SizePercent = Math.Clamp(settings.SizePercent, 10, 100);
         if (!Enum.IsDefined(settings.Speed)) settings.Speed = SpeedPreset.Balanced;
         if (!Enum.IsDefined(settings.WhenFileExists)) settings.WhenFileExists = ExistingFileAction.KeepBoth;
-        if (!LineColours.All.Any(c => c.Id == settings.LineColour)) settings.LineColour = LineColours.Default;
+        if (!ColourSchemes.All.Any(c => c.Id == settings.Colours)) settings.Colours = ColourSchemes.Default;
         settings.FormatSettings ??= [];
         settings.Presets ??= [];
         settings.LastTargets ??= [];

@@ -22,7 +22,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var viewModel = new MainViewModel();
-            ApplyLineColour(viewModel.Settings.LineColour);
+            ApplyColours(viewModel.Settings.Colours);
 
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
@@ -83,23 +83,46 @@ public partial class App : Application
     /// Colours the window's lines and accents. The brushes are changed in place, so everything that
     /// uses them — the Fluent controls' borrowed ones too — follows at once.
     /// </summary>
-    public void ApplyLineColour(string id)
+    public void ApplyColours(string id)
     {
-        var colour = Color.Parse(LineColours.Hex(id));
-        Color Darker(double share) => Color.FromRgb((byte)(colour.R * share), (byte)(colour.G * share), (byte)(colour.B * share));
-        Color Faint(byte alpha) => Color.FromArgb(alpha, colour.R, colour.G, colour.B);
+        var scheme = ColourSchemes.Find(id);
+        var background = Color.Parse(scheme.Background);
+        var surface = Color.Parse(scheme.Surface);
+        var text = Color.Parse(scheme.Text);
+        var line = Color.Parse(scheme.Line);
+        Color Darker(double share) => Color.FromRgb((byte)(line.R * share), (byte)(line.G * share), (byte)(line.B * share));
+        Color Faint(byte alpha) => Color.FromArgb(alpha, line.R, line.G, line.B);
+        Color Lit(double share) => Color.FromRgb(
+            (byte)(surface.R + (text.R - surface.R) * share),
+            (byte)(surface.G + (text.G - surface.G) * share),
+            (byte)(surface.B + (text.B - surface.B) * share));
 
-        Set("LineBrush", colour);
-        Set("LineDimBrush", Faint(0x66));
-        Set("AccentBrush", colour);
+        Set("BgBrush", background);
+        Set("Surface2Brush", surface);
+        Set("Surface2HoverBrush", Lit(0.09));
+        Set("Surface2PressedBrush", Lit(0.16));
+        Set("TextBrush", text);
+        Set("TextDimBrush", Color.Parse(scheme.Dim));
+        Set("OnAccentBrush", background);
+        Set("SuccessBrush", Color.Parse(scheme.Success));
+        Set("WarnBrush", Color.Parse(scheme.Warning));
+        Set("ErrorBrush", Color.Parse(scheme.Error));
+
+        Set("LineBrush", line);
+        Set("LineMidBrush", Faint(0xA6));
+        Set("LineDimBrush", Faint(0x47));
+        Set("AccentBrush", line);
         Set("AccentHoverBrush", Darker(0.85));
         Set("AccentPressedBrush", Darker(0.7));
-        Set("SelectionBrush", Faint(0x26));
+        Set("SelectionBrush", Faint(0x24));
 
-        // what is left to the Fluent theme's own accent: the focus of a menu's or a list's mark
+        // what is left to the Fluent theme's own colours: the marks of menus and lists, and a popup's region
         foreach (var style in Styles.OfType<FluentTheme>())
             if (style.Palettes.TryGetValue(ThemeVariant.Dark, out var palette))
-                palette.Accent = colour;
+            {
+                palette.Accent = line;
+                palette.RegionColor = background;
+            }
     }
 
     private void Set(string key, Color colour)
