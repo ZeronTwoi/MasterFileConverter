@@ -6,13 +6,13 @@ namespace FileConverter.Core.Settings;
 public static class SettingKeys
 {
     /// <summary>
-    /// Which way a format's size and quality are set: by the File size slider (absent), a
+    /// Which way a format's size and quality are set: by the Result slider (absent), a
     /// quality level, a bitrate, an exact size, lossless (WebP) or a fixed level (archives).
     /// Only the Format settings panel sets it; see <see cref="SettingCatalog.Resolve"/>.
     /// </summary>
     public const string SizeMode = "sizeMode";
 
-    /// <summary>A file's (or format's) own File size, 10–100 % of the original, in place of the slider's.</summary>
+    /// <summary>A file's (or format's) own size, 10–100 % of the original, in place of the slider's.</summary>
     public const string SizePercent = "sizePercent";
 
     // pictures (and every picture a conversion writes: frames, PDF pages)

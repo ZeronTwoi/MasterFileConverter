@@ -18,7 +18,7 @@ public sealed record SettingChoice(string Value, string Label);
 /// <summary>The ways a format's size and quality can be set (<see cref="SettingKeys.SizeMode"/>).</summary>
 public static class SizeModes
 {
-    /// <summary>The File size slider decides, as for every other format.</summary>
+    /// <summary>The Result slider decides, as for every other format.</summary>
     public const string Slider = "slider";
     public const string Quality = "quality";
     public const string Bitrate = "bitrate";
@@ -26,13 +26,13 @@ public static class SizeModes
     public const string Lossless = "lossless";
     public const string Level = "level";
 
-    /// <summary>Its own File size, a share of the original like the slider's, for this file or format alone.</summary>
+    /// <summary>A size of its own, a share of the original like the slider's, for this file or format alone.</summary>
     public const string Percent = "percent";
 
     /// <summary>
     /// Which one a set of values saved without a choice means: the setting that took precedence
     /// in the converters before there was one (2.5.0 and older, and the command line). An own
-    /// File size is only a slider position, so anything more precise goes before it.
+    /// size is only a slider position, so anything more precise goes before it.
     /// </summary>
     internal static readonly string[] Precedence = [Size, Bitrate, Quality, Lossless, Level, Percent];
 }
@@ -78,7 +78,7 @@ public sealed record SettingDefinition(string Key, string Label, SettingKind Kin
 
     /// <summary>
     /// Has a row in the Format settings panel. False for what the panel decides another way or
-    /// leaves to the Speed setting, but a script may still set with --set.
+    /// leaves to the Result slider, but a script may still set with --set.
     /// </summary>
     public bool InPanel { get; init; } = true;
 
@@ -208,7 +208,7 @@ public static class SettingCatalog
     }
 
     /// <summary>
-    /// Does the File size slider change this conversion's result? It does for pictures, video
+    /// Does the Result slider change this conversion's result? It does for pictures, video
     /// and compressed sound; not for documents, lossless sound or drawings kept as drawings —
     /// and for archives it only picks how hard to compress, which their own level does better.
     /// </summary>
@@ -221,7 +221,7 @@ public static class SettingCatalog
     };
 
     /// <summary>
-    /// A File size of its own for a format or a file: one more way of setting size and quality,
+    /// A size of its own for a format or a file: one more way of setting size and quality,
     /// right after the slider it stands in for — on a conversion that had no choice yet, the
     /// choice is made for it.
     /// </summary>
@@ -231,7 +231,7 @@ public static class SettingCatalog
         if (at < 0)
         {
             list.Insert(0, SizeMode(SetBy, SizeAndQuality, SliderDecides,
-                "How small the result is made. The File size slider decides for every file; give this format, or the files " +
+                "How small the result is made. The Result slider decides for every file; give this format, or the files " +
                 "selected, a file size of their own and the slider leaves them alone."));
             at = 0;
         }
@@ -244,7 +244,7 @@ public static class SettingCatalog
         {
             Group = choice.Group, Min = 10, Max = 100, Mode = SizeModes.Percent, Suggested = "50", Automatic = "10 to 100",
             OnCommandLine = false, // --size is the command line's file size
-            Help = "The share of the original size to aim for, like the File size slider at the bottom — which then leaves " +
+            Help = "The share of the original size to aim for, like the Result slider at the bottom — which then leaves " +
                    "these files alone. 100 keeps the best quality the format allows." + EmptyMeansSlider
         });
     }
@@ -271,7 +271,7 @@ public static class SettingCatalog
     /// <summary>
     /// The values a conversion runs with: of the size-and-quality settings only those of the
     /// chosen way are kept, so a quality level, a bitrate and an exact size never compete, and
-    /// none of them is left over when the File size slider is chosen again. The choice itself is
+    /// none of them is left over when the Result slider is chosen again. The choice itself is
     /// dropped — no converter reads it.
     /// </summary>
     public static Dictionary<string, string> Resolve(IReadOnlyList<SettingDefinition> definitions,
@@ -286,7 +286,7 @@ public static class SettingCatalog
         return kept;
     }
 
-    /// <summary>Do these values (after <see cref="Resolve"/>) set size and quality instead of the File size slider?</summary>
+    /// <summary>Do these values (after <see cref="Resolve"/>) set size and quality instead of the Result slider?</summary>
     public static bool ReplacesSlider(IReadOnlyList<SettingDefinition> definitions, IReadOnlyDictionary<string, string> resolved) =>
         definitions.Any(d => d.Mode != null && resolved.ContainsKey(d.Key));
 
@@ -301,11 +301,11 @@ public static class SettingCatalog
 
     private const string SizeAndQuality = "Size and quality";
     private const string SetBy = "Set by";
-    private const string SliderDecides = "File size slider";
+    private const string SliderDecides = "Result slider";
     private const string FixedQuality = "Fixed quality";
     private const string FixedBitrate = "Fixed bitrate";
     private const string ExactSize = "Exact file size";
-    private const string EmptyMeansSlider = " Left empty, the File size slider decides.";
+    private const string EmptyMeansSlider = " Left empty, the Result slider decides.";
 
     // ---------- pictures ----------
 
@@ -319,7 +319,7 @@ public static class SettingCatalog
             ways.Add((SizeModes.Quality, FixedQuality));
             if (exactSize) ways.Add((SizeModes.Size, ExactSize));
             list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
-                "How small the picture is made. The File size slider decides for every format, " +
+                "How small the picture is made. The Result slider decides for every format, " +
                 (target == "webp" ? "and keeps a picture from a lossless source lossless at 100 %. " : "") +
                 "Choose another way to set it for this format alone.", ways.ToArray()));
             if (target == "webp")
@@ -357,7 +357,7 @@ public static class SettingCatalog
         }
         if (target == "png")
         {
-            // how hard PNG compresses is the Speed setting's to decide; scripts may still set it
+            // how hard PNG compresses is the Result slider's to decide; scripts may still set it
             list.Add(new(K.Compression, "Compression effort", SettingKind.Number)
             {
                 Group = group, Min = 0, Max = 9, Automatic = "Auto (from Speed)", InPanel = false,
@@ -442,7 +442,7 @@ public static class SettingCatalog
         if (target == "jpg")
         {
             list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
-                "How small each frame is made. The File size slider decides for every format; choose a fixed quality to set it for this format alone.",
+                "How small each frame is made. The Result slider decides for every format; choose a fixed quality to set it for this format alone.",
                 (SizeModes.Quality, FixedQuality)));
             list.Add(new(K.Quality, "Quality", SettingKind.Number)
             {
@@ -529,7 +529,7 @@ public static class SettingCatalog
         ways.Add((SizeModes.Bitrate, FixedBitrate));
         ways.Add((SizeModes.Size, ExactSize));
         list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
-            "How small the video is made. The File size slider decides for every format, and at 100 % copies the video " +
+            "How small the video is made. The Result slider decides for every format, and at 100 % copies the video " +
             "untouched wherever it can. Choose another way to set it for this format alone; the video is then encoded again.",
             ways.ToArray()));
         if (target != "avi")
@@ -584,9 +584,9 @@ public static class SettingCatalog
             Group = picture, Min = 1, Max = 240, AllowDecimals = true, Reencodes = true, Automatic = "Keep original",
             Help = "Video with a higher frame rate is reduced to this (60 → 30 halves the work and the size). Lower rates are left alone."
         });
-        // the Speed setting at the bottom decides; a script may still give one format its own
-        list.Add(Choice(K.Speed, "Encoding speed", picture, "Auto (the Speed setting)",
-            "Overrides the Speed setting for these files only.",
+        // the Result slider at the bottom decides; a script may still give one format its own
+        list.Add(Choice(K.Speed, "Encoding speed", picture, "Auto (the Result slider)",
+            "Overrides the speed of the Result slider for these files only.",
             ("fastest", "Fastest"), ("fast", "Fast"), ("balanced", "Balanced"), ("best", "Best quality")) with { InPanel = false });
 
         if (hasAudio)
@@ -635,7 +635,7 @@ public static class SettingCatalog
             ways.Add((SizeModes.Bitrate, FixedBitrate));
             ways.Add((SizeModes.Size, ExactSize));
             list.Add(SizeMode(SetBy, SizeAndQuality, SliderDecides,
-                "How small the sound is made. The File size slider decides for every format, and at 100 % copies the sound " +
+                "How small the sound is made. The Result slider decides for every format, and at 100 % copies the sound " +
                 "untouched wherever it can. Choose another way to set it for this format alone.", ways.ToArray()));
             if (target == "mp3")
             {
@@ -673,7 +673,7 @@ public static class SettingCatalog
         const string group = "Audio";
         if (target == "flac")
         {
-            // how hard FLAC compresses is the Speed setting's to decide; scripts may still set it
+            // how hard FLAC compresses is the Result slider's to decide; scripts may still set it
             list.Add(new(K.Compression, "Compression effort", SettingKind.Number)
             {
                 Group = group, Min = 0, Max = 12, Reencodes = true, Automatic = "Auto (from Speed)", InPanel = false,
@@ -804,15 +804,15 @@ public static class SettingCatalog
         const string group = "Archive";
         if (target != "tar")
         {
-            list.Add(SizeMode("Compression", group, "Set by Speed and File size",
-                "How hard the files are compressed. The Speed setting and the File size slider decide for every format; " +
+            list.Add(SizeMode("Compression", group, "Result slider",
+                "How hard the files are compressed. The Result slider decides for every format; " +
                 "choose a fixed level to set it for this format alone.",
                 (SizeModes.Level, "Fixed level")));
             list.Add(new(K.Level, "Level", SettingKind.Number)
             {
                 Group = group, Min = 0, Max = 9, Mode = SizeModes.Level, Suggested = "9", Automatic = "0 (store) to 9",
                 Help = "0 stores the files without compressing them (fastest); 9 compresses hardest (slowest, smallest)." +
-                       " Left empty, Speed and the File size slider decide."
+                       " Left empty, the Result slider decides."
             });
             list.Add(new(K.Password, "Password", SettingKind.Secret)
             {

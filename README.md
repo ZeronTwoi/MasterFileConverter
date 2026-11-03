@@ -63,15 +63,15 @@ Pictures, sound, video and archives can also be set to their own format, just to
   Excel and PowerPoint or LibreOffice are installed, they lay the pages out exactly instead.
 - **Fast.** Every processor core is used, and the graphics card for video where that is
   actually quicker.
-- **Simple, precise when wanted.** One slider for file size and one for how much care each
-  file gets, for all files. *Format settings* give exact control for the files you select or for
+- **Simple, precise when wanted.** One slider, Result, sets how small and how good the files get. *Format settings* give exact control for the files you select or for
   every file of a format: resolution, codec, pages, password, their own file size, quality or
   bitrate — files you give the same settings are shown as one coloured group.
 - **Offline, and nothing behind your back.** Your files never leave your computer. The app
   only goes online for what you agree to: fetching the engines, one look per start for a newer
   version if you say yes when it asks, and installing that version when you click. No account,
   no ads, no usage data, nothing running in the background, nothing started with the system.
-- **A command line** for scripts, in the same download.
+- **Made for agents too.** AI agents can use it as a tool (MCP), and scripts through a command line
+  with JSON output, in the same download: see [docs/agents.md](docs/agents.md).
 
 All the details — every setting, what "lossless" covers, speed measurements, the command line,
 what has been tested — are in [docs/details.md](docs/details.md).

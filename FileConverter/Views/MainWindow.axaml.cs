@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -32,6 +33,11 @@ public partial class MainWindow : Window, IAppHost
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
+
+    public async Task CopyTextAsync(string text)
+    {
+        if (Clipboard is { } clipboard) await clipboard.SetTextAsync(text);
+    }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
